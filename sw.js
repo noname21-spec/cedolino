@@ -1,5 +1,5 @@
 /* Cedolino service worker: offline, aggiornamenti, condivisione di file */
-const VERSION = 'cedolino-v4';
+const VERSION = 'cedolino-v5';
 const CORE = ['./', './index.html', './styles.css', './engine.js', './app.js', './manifest.webmanifest', './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/maskable-512.png', './icons/apple-touch-180.png'];
 const CDN = ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'];
 const LIBS = 'cedolino-libs-v1', SHARE = 'cedolino-share';

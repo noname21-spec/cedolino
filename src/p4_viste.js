@@ -123,7 +123,7 @@ function viewBusta(id) {
   const j = job(b.jobId);
   let h = topbar(ymLabel(b.ym), `${j ? esc(j.azienda) : ''}${b.tipo !== 'mensile' ? ` · ${b.tipo}` : ''}`, `<button class="iconbtn" data-act="busta-edit" data-id="${b.id}" aria-label="Modifica">${ic.pen}</button>`, '#buste');
   h += `<div class="card hero"><span class="kicker">Netto in busta ${info('netto')}</span><div class="big">${eur(b.netto)}</div><div class="muted small">Lordo ${eur(b.lordo)} · trattenute ${eur(b.trattenute ?? (b.lordo && b.netto ? b.lordo - b.netto : null))}</div>
-    <div class="row" style="margin-top:12px;flex-wrap:wrap">${b.fileId ? `<button class="btn sm ghost" data-act="view-file" data-id="${b.fileId}" data-t="Busta ${ymLabel(b.ym)}">${ic.eye} Documento</button>` : ''}<button class="btn sm ghost" data-act="cdc-invia" data-id="${b.id}">${ic.link} ${b.cdc ? 'Aggiorna in' : 'Invia a'} Conto di Casa</button></div></div>`;
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">${b.fileId ? `<button class="btn sm ghost" data-act="view-file" data-id="${b.fileId}" data-t="Busta ${ymLabel(b.ym)}">${ic.eye} Documento</button><button class="btn sm ghost" data-act="busta-rileggi" data-id="${b.id}">${ic.doc} Rileggi</button>` : ''}<button class="btn sm ghost" data-act="cdc-invia" data-id="${b.id}">${ic.link} ${b.cdc ? 'Aggiorna in' : 'Invia a'} Conto di Casa</button></div></div>`;
   const chk = controlla(b); const problemi = chk.filter((c) => c.lettera);
   h += `<div class="card"><h2>Controllo</h2>${chk.map((c) => `<div class="chk ${c.s}"><div class="dot">${c.s === 'ok' ? ic.check : c.s === 'warn' ? ic.alert : ic.info}</div><div><b>${esc(c.t)}</b><p>${esc(c.p)}</p></div></div>`).join('')}
     <button class="btn ${problemi.length ? '' : 'ghost'} block" style="margin-top:12px" data-act="lettera" data-id="${b.id}">${ic.mail} ${problemi.length ? 'Chiedi chiarimenti all’ufficio paghe' : 'Scrivi all’ufficio paghe'}</button></div>`;
@@ -153,9 +153,20 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
   <label class="field"><span>Note</span><textarea class="inp" name="note">${esc(b.note || '')}</textarea></label></details>
   <div class="btns" style="margin-top:14px"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`;
   const sh = openSheet(h); const form = $('form', sh);
+  const verifica = () => {
+    const n = toNum(form.netto.value), l = toNum(form.lordo.value), t = toNum(form.trattenute.value); let box = $('#contiBox', sh);
+    if (!box) { box = document.createElement('p'); box.id = 'contiBox'; box.className = 'note'; form.querySelector('.fgrid:nth-of-type(2)').after(box); }
+    if (n == null || l == null) { box.textContent = ''; return; }
+    const diff = t != null ? l - t - n : null;
+    if (n > l * 1.3) box.innerHTML = `<span style="color:var(--warn)">${ic.alert.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')} Il netto è molto più alto del lordo: controlla i due valori.</span>`;
+    else if (diff != null && Math.abs(diff) > 1.5) box.innerHTML = `<span style="color:var(--warn)">Lordo − trattenute = ${eur(l - t)}, ma il netto è ${eur(n)}: uno dei tre valori potrebbe essere sbagliato.</span>`;
+    else if (diff != null) box.innerHTML = `<span style="color:var(--ok)">I conti tornano: lordo − trattenute = netto${Math.abs(diff) > 0.01 ? ` (arrotondamento ${eur(-diff)})` : ''}.</span>`;
+    else box.textContent = '';
+  };
+  ['netto', 'lordo', 'trattenute'].forEach((k) => form[k].addEventListener('input', verifica)); verifica();
   sh.addEventListener('click', (e) => {
     if (e.target.closest('[data-x="cancel"]')) closeSheet();
-    const ins = e.target.closest('[data-insegna]'); if (ins) insegna(ins.dataset.insegna, testo, (v) => { form[ins.dataset.insegna].value = fmtIn(v); form[ins.dataset.insegna].classList.add('found'); });
+    const ins = e.target.closest('[data-insegna]'); if (ins) insegna(ins.dataset.insegna, testo, (v) => { form[ins.dataset.insegna].value = fmtIn(v); form[ins.dataset.insegna].classList.add('found'); verifica(); });
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault(); const fd = new FormData(form);
@@ -193,6 +204,15 @@ async function caricaBusta(files) {
   try { testo = await leggiFile(file, (p) => { const el = $('#prog', sh); if (el) el.textContent = `Riconoscimento del testo ${Math.round(p * 100)}%`; }); found = parseBusta(testo); }
   catch (e) { found = {}; }
   closeSheet(); setTimeout(() => bustaForm(Object.assign({}, found), found, { id, testo }), 230);
+}
+async function rileggiBusta(b) {
+  const rec = await fileGet(b.fileId); if (!rec) { toast('Il documento non è su questo dispositivo'); return; }
+  const sh = openSheet(`<h3>Rileggo la busta…</h3><p class="lead" id="prog">${esc(rec.name)}</p><div style="text-align:center;padding:16px"><span class="spin"></span></div>`);
+  let testo = '', found = {};
+  try { const f = new File([rec.blob], rec.name, { type: rec.type }); testo = await leggiFile(f, (x, l) => { const el = $('#prog', sh); if (el) el.textContent = `${l ? l + ' · ' : ''}${Math.round((x || 0) * 100)}%`; }); found = parseBusta(testo); } catch (e) {}
+  closeSheet();
+  const pref = Object.assign({}, b); Object.keys(found).forEach((k) => { if (!k.startsWith('_') && found[k] != null && k !== 'jobId') pref[k] = found[k]; });
+  setTimeout(() => bustaForm(pref, found, { id: b.fileId, testo }), 230);
 }
 function lettera(b) {
   const j = job(b.jobId); const P = S.profilo; const chk = controlla(b).filter((c) => c.lettera);

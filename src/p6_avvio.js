@@ -234,6 +234,7 @@ const actions = {
   },
   'busta-upload'() { if (!S.lavori.length) { toast('Prima aggiungi il lavoro a cui appartiene'); return actions['job-new'](); } caricaBusta(); },
   'busta-new'() { bustaForm(); },
+  'busta-rileggi'(el) { rileggiBusta(S.buste.find((x) => x.id === el.dataset.id)); },
   'busta-edit'(el) { const b = S.buste.find((x) => x.id === el.dataset.id); bustaForm(Object.assign({}, b), {}, null); },
   async 'busta-del'(el) { if (!(await ask('Eliminare la busta?', 'La busta e il documento allegato verranno rimossi.', 'Elimina'))) return; const b = S.buste.find((x) => x.id === el.dataset.id); if (b && b.fileId) fileDel(b.fileId); S.buste = S.buste.filter((x) => x.id !== el.dataset.id); segnaEliminato(el.dataset.id); save(); location.hash = '#buste'; toast('Busta eliminata'); },
   'filtro-buste'(el) { filtroBuste = el.dataset.id; render(); },
@@ -355,6 +356,6 @@ async function boot() {
   setInterval(() => { if (S.timbro && ['home', 'turni'].includes(route()) && !sheetStack.length) render(); }, 60000);
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (S.tema === 'auto') applyTheme(); });
-window.__cedolino = { get S() { return S; }, stima, controlla, parseBusta, parseContratto, parseCU, parsePlanning, annoFiscale, naspiDati, promemoria, mergeStati };
+window.__cedolino = { get S() { return S; }, stima, controlla, parseBusta, leggiFile, parseContratto, parseCU, parsePlanning, annoFiscale, naspiDati, promemoria, mergeStati };
 boot();
 })();

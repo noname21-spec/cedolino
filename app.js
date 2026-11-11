@@ -496,14 +496,20 @@ function loadScript(src) { return new Promise((res, rej) => { if ($(`script[src=
 function pdfLib() { const l = window.pdfjsLib || window['pdfjs-dist/build/pdf']; if (l && !l.__cfg) { try { l.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch (e) {} l.__cfg = true; } return l; }
 async function pdfText(blob) {
   const lib = pdfLib(); if (!lib) throw new Error('Lettore PDF non disponibile');
-  const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise; const lines = [];
+  const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise; const lines = []; const items = [];
   for (let p = 1; p <= Math.min(pdf.numPages, 6); p++) {
     const page = await pdf.getPage(p); const tc = await page.getTextContent(); const rows = {};
-    for (const it of tc.items) { if (!it.str || !it.str.trim()) continue; const y = Math.round(it.transform[5] / 3); (rows[y] = rows[y] || []).push({ x: it.transform[4], s: it.str }); }
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue; const y = Math.round(it.transform[5] / 3);
+      (rows[y] = rows[y] || []).push({ x: it.transform[4], s: it.str });
+      // separo i pezzi di testo che contengono più parole/importi distanti (alcuni PDF li uniscono)
+      items.push({ p, x: it.transform[4], y: it.transform[5], w: it.width || it.str.length * 4, s: it.str.trim() });
+    }
     Object.keys(rows).map(Number).sort((a, b) => b - a).forEach((y) => lines.push(rows[y].sort((a, b) => a.x - b.x).map((r) => r.s).join(' ').replace(/\s+/g, ' ').trim()));
   }
-  return lines.join('\n');
+  const text = lines.join('\n'); ultimoLayout = { text, items }; return text;
 }
+let ultimoLayout = null;
 let ocrWorkerP = null; let ocrProg = null;
 async function ocrWorker() {
   if (!ocrWorkerP) ocrWorkerP = (async () => {
@@ -548,32 +554,148 @@ function cercaEtichetta(L, found, key, re, opts = {}) {
     if (vals.length) { found[key] = opts.last ? vals[vals.length - 1] : vals[0]; return; }
   }
 }
+/* ---- lettura della busta: posizione dei numeri sulla pagina ---- */
+const IMPORTO_RE = /^-?\d{1,3}(?:\.\d{3})*,\d{2}-?$|^-?\d+,\d{2}-?$/;
+const valImp = (s) => { const neg = /-$/.test(s.trim()); const v = pnum(s.trim().replace(/-$/, '')); return neg ? -v : v; };
+function righeLayout(items) {
+  const rows = [];
+  items.slice().sort((a, b) => a.p - b.p || b.y - a.y || a.x - b.x).forEach((it) => {
+    let r = rows.find((q) => q.p === it.p && Math.abs(q.y - it.y) <= 2.5);
+    if (!r) { r = { p: it.p, y: it.y, items: [] }; rows.push(r); }
+    r.items.push(it);
+  });
+  rows.forEach((r) => { r.items.sort((a, b) => a.x - b.x); let off = 0; r.str = ''; r.items.forEach((it) => { it.o = off; r.str += it.s + ' '; off = r.str.length; }); });
+  return rows;
+}
+/** Etichette che corrispondono alla regola, con la loro casella sulla pagina */
+function trovaEtichette(rows, re, not) {
+  const out = [];
+  for (const r of rows) {
+    const rx = new RegExp(re.source, re.flags.includes('g') ? re.flags : re.flags + 'g'); let m;
+    while ((m = rx.exec(r.str))) {
+      if (!m[0]) { rx.lastIndex++; continue; }
+      const its = r.items.filter((it) => it.o < m.index + m[0].length && it.o + it.s.length > m.index && !IMPORTO_RE.test(it.s));
+      if (!its.length) continue;
+      if (not) { const i0 = r.items.indexOf(its[0]); const vicino = [r.items[i0 - 1], ...its].filter(Boolean).map((x) => x.s).join(' '); if (not.test(vicino)) continue; }
+      out.push({ r, x0: Math.min(...its.map((i) => i.x)), x1: Math.max(...its.map((i) => i.x + i.w)), its });
+    }
+  }
+  return out;
+}
+const importiRiga = (r) => r.items.filter((it) => IMPORTO_RE.test(it.s));
+/** Possibili valori per un'etichetta: a destra nella stessa riga e in colonna sotto */
+function candidati(rows, lab) {
+  const destra = importiRiga(lab.r).filter((it) => it.x >= lab.x1 - 2);
+  const dopo = lab.r.items.filter((it) => it.x >= lab.x1 - 2 && !lab.its.includes(it));
+  const subito = dopo.length && IMPORTO_RE.test(dopo[0].s); // il primo elemento dopo l'etichetta è già un numero
+  let sotto = [];
+  for (const r of rows) {
+    if (r.p !== lab.r.p || r.y >= lab.r.y || lab.r.y - r.y > 48) continue;
+    const hit = importiRiga(r).filter((it) => it.x + it.w >= lab.x0 - 18 && it.x <= lab.x1 + 18);
+    if (hit.length) { sotto = hit.sort((a, b) => Math.abs((a.x + a.w / 2) - (lab.x0 + lab.x1) / 2) - Math.abs((b.x + b.w / 2) - (lab.x0 + lab.x1) / 2)); break; }
+  }
+  const ord = subito ? [destra[0], sotto[0], ...destra.slice(1)] : [sotto[0], destra[0], ...destra.slice(1)];
+  return { lista: ord.filter(Boolean).map((it) => valImp(it.s)), destra: destra.map((it) => ({ v: valImp(it.s), it })), sotto: sotto.map((it) => valImp(it.s)), subito };
+}
+/** Colonna di una tabella (es. "Trattenute", "Saldo"): restituisce la sua posizione */
+function colonna(rows, re) { const l = trovaEtichette(rows, re)[0]; return l ? { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y } : null; }
+const nellaColonna = (r, col) => importiRiga(r).filter((it) => it.x + it.w >= col.x0 - 30 && it.x <= col.x1 + 30).sort((a, b) => Math.abs((a.x + a.w) - col.x1) - Math.abs((b.x + b.w) - col.x1))[0];
+
 function parseBusta(text) {
   const L = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
   const found = {}; const appresi = [];
-  // 1) regole insegnate dall'utente
   for (const r of S.regole || []) {
     if (found[r.campo] != null) continue;
     const line = L.find((l) => chiaveRiga(l) === r.chiave) || L.find((l) => r.chiave.length > 8 && chiaveRiga(l).includes(r.chiave));
     if (line) { const v = importiIn(line); if (v[r.idx] != null) { found[r.campo] = v[r.idx]; appresi.push(r.campo); } }
   }
-  // 2) etichette dei programmi paghe più diffusi (Zucchetti, TeamSystem, ADP, Inaz…)
-  const g = (k, re, o) => cercaEtichetta(L, found, k, re, o);
-  g('netto', /netto\s*(del\s*mese|in\s*busta|a\s*pagare|busta|da\s*pagare|mese|corrisposto|retribuzione)|netto\b/i, { not: /imponib|lordo/i });
-  g('lordo', /totale\s*competenze|tot\.?\s*competenze|totale\s*lordo|lordo\s*(mensile|del\s*mese)|competenze\s*lorde|retribuzione\s*lorda|totale\s*retribuzione/i);
-  g('trattenute', /totale\s*trattenute|tot\.?\s*trattenute|totale\s*ritenute|tot\.?\s*ritenute/i);
-  g('imponibilePrev', /imponibile\s*(inps|previd|contrib|i\.?n\.?p\.?s)|imp\.?\s*(inps|prev)/i);
-  g('contributi', /(contribut[oi]|ritenut[ae])\s*(inps|ivs|previd|c\/dip)|contr\.?\s*ivs|c\.?\s*i\.?v\.?s|ivs\b|inps\s*c\/dip|ritenute\s*previdenziali|tot\.?\s*contributi/i, { not: /imponib/i });
-  g('imponibileFisc', /imponibile\s*(irpef|fiscale)|imp\.?\s*(irpef|fisc)/i);
-  g('irpef', /irpef\s*(netta|trattenut|mese|a\s*debito|pagata)|ritenut[ae]\s*irpef|ritenuta\s*fiscale/i, { not: /imponib|lorda/i });
-  g('irpef', /irpef/i, { not: /imponib|lorda|detraz|add/i });
-  g('addReg', /add(izionale|\.|\s)*\s*reg/i, { not: /imponib/i });
-  g('addCom', /add(izionale|\.|\s)*\s*com/i, { not: /imponib/i });
-  g('tfr', /quota\s*t\.?f\.?r|t\.?f\.?r\.?\s*(mese|quota|maturat|del\s*mese)/i);
-  g('ferieRes', /ferie/i, { last: true, not: /god(ute)?\s*$/i });
-  g('permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true });
-  g('oreExtra', /(ore\s*)?(supplementar|straordinar)/i, { not: /magg/i });
-  if (found.oreExtra != null && found.oreExtra > 120) delete found.oreExtra;
+  const RE = {
+    netto: [/netto\s*(?:del\s*mese|in\s*busta|a\s*pagare|busta|da\s*pagare|mese|corrisposto|retribuzione|a\s*liquidare)|\bnetto\b/i, /imponib|lordo|progress/i],
+    lordo: [/totale\s*competenze|tot\.?\s*competenze|totale\s*lordo|lordo\s*(?:mensile|del\s*mese)|competenze\s*lorde|retribuzione\s*lorda|totale\s*retribuzione|totale\s*compensi/i, /progress/i],
+    trattenute: [/totale\s*trattenute|tot\.?\s*trattenute|totale\s*ritenute|tot\.?\s*ritenute/i, /progress/i],
+    imponibilePrev: [/imponibile\s*(?:inps|previd|contrib|i\.?n\.?p\.?s)|imp\.?\s*(?:inps|prev)/i, /progress/i],
+    imponibileFisc: [/imponibile\s*(?:irpef|fiscale)|imp\.?\s*(?:irpef|fisc)/i, /progress/i],
+    contributi: [/(?:contribut[oi]|ritenut[ae])\s*(?:inps|ivs|previd|c\/dip)|contr\.?\s*ivs|c\.?\s*i\.?v\.?s|\bivs\b|inps\s*c\/dip|ritenute\s*previdenziali|tot\.?\s*contributi/i, /imponib|progress/i],
+    irpef: [/irpef\s*(?:netta|trattenut|mese|a\s*debito|pagata|dovuta)|ritenut[ae]\s*(?:fiscal[ie]\s*)?irpef|ritenut[ae]\s*fiscal[ie]|\birpef\b(?!\s*(?:lorda|imponib|teorica|progress))/i, /imponib|imp\.\s*$|lorda|progress|detraz/i],
+    addReg: [/add(?:izionale|\.|\s)*\s*reg/i, /imponib|progress/i],
+    addCom: [/add(?:izionale|\.|\s)*\s*com/i, /imponib|progress/i],
+    tfr: [/quota\s*t\.?f\.?r|t\.?f\.?r\.?\s*(?:mese|quota|maturat|del\s*mese|mensile)/i, /fondo|progress|anticip/i],
+    oreExtra: [/supplementar|straordinar/i, /magg\.?\s*%?\s*$/i],
+  };
+  const lay = ultimoLayout && ultimoLayout.text === text ? ultimoLayout.items : null;
+  const C = {}; // candidati per campo
+  if (lay) {
+    const rows = righeLayout(lay);
+    const colTratt = colonna(rows, /^trattenute$|\btrattenute\b(?!\s*:)/i);
+    const colOre = colonna(rows, /ore\s*\/\s*g+|^ore$|quantit[aà]|\bq\.?t[aà]\b|\bn\.?\s*ore/i);
+    for (const [k, [re, not]] of Object.entries(RE)) {
+      if (found[k] != null) continue;
+      const labs = trovaEtichette(rows, re, not); const vals = [];
+      for (const lab of labs) {
+        const c = candidati(rows, lab);
+        if (['contributi', 'irpef', 'addReg', 'addCom'].includes(k) && c.destra.length) {
+          const inCol = colTratt && colTratt.p === lab.r.p && nellaColonna(lab.r, colTratt);
+          if (inCol) vals.push(valImp(inCol.s));
+          vals.push(c.destra[c.destra.length - 1].v, ...c.lista);
+        } else if (k === 'oreExtra') {
+          const inCol = colOre && colOre.p === lab.r.p && nellaColonna(lab.r, colOre);
+          if (inCol) vals.push(valImp(inCol.s)); else vals.push(...c.lista);
+        } else vals.push(...c.lista);
+      }
+      if (vals.length) C[k] = [...new Set(vals)];
+    }
+    // tabella ferie/permessi: riga × colonna "Saldo/Residuo"
+    const colSaldo = colonna(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno\s*prec)|spettant|da\s*godere|disponibil/i);
+    const tab = (re) => {
+      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur/i).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
+      for (const lab of labs) { const its = importiRiga(lab.r).filter((it) => it.x >= lab.x1 - 2); if (!its.length) continue; const it = colSaldo && colSaldo.p === lab.r.p ? nellaColonna(lab.r, colSaldo) || its[its.length - 1] : its[its.length - 1]; tot = (tot || 0) + valImp(it.s); }
+      return tot;
+    };
+    if (found.ferieRes == null) { const v = tab(/^\s*ferie\b|\bferie\b(?!\s*god)/i); if (v != null) found.ferieRes = v; }
+    if (found.permessiRes == null) { const v = tab(/permess|\br\.?\s?o\.?\s?l\.?\b|ex[\s.-]*fest/i); if (v != null) found.permessiRes = v; }
+  }
+  // lettura per righe (foto, PDF senza posizioni): tutti i valori plausibili
+  // titoli di colonna tipici delle buste (per associare i valori della riga sotto in ordine)
+  const TESTATE = [...Object.values(RE).map(([re]) => re), /irpef\s*lorda/i, /detrazion[ie]/i, /fondo\s*t\.?f\.?r/i, /arrotond\w*/i, /progressiv\w*/i, /conguagli\w*/i, /accont\w*/i, /anticip\w*/i, /tot(?:ale)?\.?\s*ore/i, /giorni\s*(?:lav|retr|inps)\w*/i, /res(?:iduo)?\.?\s*a\.?\s*p\.?/i, /maturat\w*/i, /godut\w*/i, /\bsaldo\b/i, /imponibile\s*t\.?f\.?r/i, /credito|debito/i];
+  const testate = (line) => { const sp = []; TESTATE.forEach((re) => { for (const m of line.matchAll(new RegExp(re.source, 'gi'))) if (m[0]) sp.push([m.index, m.index + m[0].length]); });
+    sp.sort((a, b) => a[0] - b[0] || b[1] - a[1]); const out = []; let end = -1; sp.forEach((s) => { if (s[0] >= end) { out.push(s[0]); end = s[1]; } }); return out; };
+  for (const [k, [re, not]] of Object.entries(RE)) {
+    if (found[k] != null) continue;
+    const vals = C[k] ? [...C[k]] : [];
+    for (let i = 0; i < L.length; i++) {
+      const line = L[i]; const m = line.match(re); if (!m || (not && not.test(line.slice(Math.max(0, m.index - 7), m.index + m[0].length)))) continue;
+      let after = importiIn(line.slice(m.index + m[0].length));
+      if (['contributi', 'irpef', 'addReg', 'addCom'].includes(k) && after.length > 1) after = [after[after.length - 1], ...after];
+      vals.push(...after);
+      if (!after.length && L[i + 1]) {
+        const sotto = importiIn(L[i + 1]); const pos = testate(line);
+        if (pos.length > 1 && sotto.length === pos.length) { // intestazioni in fila con i valori sotto: associo per posizione
+          const idx = pos.findIndex((x) => x >= m.index - 1 && x <= m.index + 1); if (idx >= 0) vals.unshift(sotto[idx]);
+        }
+        vals.push(...sotto);
+      }
+    }
+    if (vals.length) C[k] = [...new Set(vals)];
+  }
+  // scelgo i valori che "tornano": netto = lordo − trattenute (± arrotondamento)
+  const N = C.netto || [], Lr = C.lordo || [], T = C.trattenute || [];
+  let best = null;
+  N.forEach((n, a) => Lr.forEach((l, b) => { if (!(n > 0 && l > 0 && n < l * 1.25 && n >= l * 0.25)) return; const ts = T.length ? T : [null]; ts.forEach((t, c) => { if (t != null && !(t >= 0 && t < l * 0.75 && t !== n)) return; const err = t == null ? (n <= l ? 0.5 : 9) : Math.abs(l - t - n); const sc = err * 10 + a + b + c; if (err <= (t == null ? 1 : 1.6) && (!best || sc < best.sc)) best = { n, l, t, sc }; }); }));
+  if (best) { found.netto ??= best.n; found.lordo ??= best.l; if (best.t != null) found.trattenute ??= best.t; }
+  else { if (N.length && found.netto == null) found.netto = N.find((n) => !Lr.length || n < Math.max(...Lr)) ?? N[0]; if (Lr.length && found.lordo == null) found.lordo = Math.max(...Lr.slice(0, 3)); if (T.length && found.trattenute == null) found.trattenute = T.find((t) => !found.lordo || t < found.lordo) ?? T[0]; }
+  const pick = (k, ok) => { if (found[k] != null || !C[k]) return; const v = C[k].find(ok); if (v != null) found[k] = v; };
+  pick('imponibilePrev', (v) => !found.lordo || (v <= found.lordo * 1.05 && v >= found.lordo * 0.5));
+  const baseC = found.imponibilePrev || found.lordo;
+  pick('contributi', (v) => (baseC ? v / baseC > 0.07 && v / baseC < 0.115 : v > 0 && v < 2000));
+  if (found.contributi == null && C.contributi) found.contributi = C.contributi.find((v) => !baseC || v < baseC * 0.3);
+  pick('imponibileFisc', (v) => !found.lordo || (v <= found.lordo * 1.02 && v >= found.lordo * 0.4));
+  pick('irpef', (v) => v >= 0 && (!found.imponibileFisc || v < found.imponibileFisc * 0.45) && (!found.lordo || v < found.lordo * 0.45));
+  pick('addReg', (v) => v >= 0 && v < 400); pick('addCom', (v) => v >= 0 && v < 300);
+  pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
+  pick('oreExtra', (v) => v > 0 && v <= 120);
+  // ferie e permessi senza posizioni: ultimo numero della riga
+  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b/i, { last: true, not: /god(?:ute)?\s*$/i });
+  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true });
   const mesiRe = new RegExp(`\\b(${MESI.join('|')})\\s*[-/]?\\s*(20\\d{2})`, 'i');
   const pm = text.match(mesiRe);
   if (pm) found.ym = `${pm[2]}-${pad(MESI.indexOf(pm[1].toLowerCase()) + 1)}`;
@@ -581,7 +703,7 @@ function parseBusta(text) {
   if (/tredicesima|13\s*\^?\s*mens/i.test(text)) found.tipo = 'tredicesima'; else if (/quattordicesima|14\s*\^?\s*mens/i.test(text)) found.tipo = 'quattordicesima';
   const jl = S.lavori.find((j) => j.azienda && text.toLowerCase().includes(j.azienda.toLowerCase().split(/\s+/)[0]));
   if (jl) found.jobId = jl.id;
-  if (found.netto && found.lordo && found.netto > found.lordo * 1.6) delete found.netto;
+  Object.keys(found).forEach((k) => { if (typeof found[k] === 'number') found[k] = Math.round(found[k] * 100) / 100; });
   found._appresi = appresi;
   return found;
 }
@@ -911,7 +1033,7 @@ function viewBusta(id) {
   const j = job(b.jobId);
   let h = topbar(ymLabel(b.ym), `${j ? esc(j.azienda) : ''}${b.tipo !== 'mensile' ? ` · ${b.tipo}` : ''}`, `<button class="iconbtn" data-act="busta-edit" data-id="${b.id}" aria-label="Modifica">${ic.pen}</button>`, '#buste');
   h += `<div class="card hero"><span class="kicker">Netto in busta ${info('netto')}</span><div class="big">${eur(b.netto)}</div><div class="muted small">Lordo ${eur(b.lordo)} · trattenute ${eur(b.trattenute ?? (b.lordo && b.netto ? b.lordo - b.netto : null))}</div>
-    <div class="row" style="margin-top:12px;flex-wrap:wrap">${b.fileId ? `<button class="btn sm ghost" data-act="view-file" data-id="${b.fileId}" data-t="Busta ${ymLabel(b.ym)}">${ic.eye} Documento</button>` : ''}<button class="btn sm ghost" data-act="cdc-invia" data-id="${b.id}">${ic.link} ${b.cdc ? 'Aggiorna in' : 'Invia a'} Conto di Casa</button></div></div>`;
+    <div class="row" style="margin-top:12px;flex-wrap:wrap">${b.fileId ? `<button class="btn sm ghost" data-act="view-file" data-id="${b.fileId}" data-t="Busta ${ymLabel(b.ym)}">${ic.eye} Documento</button><button class="btn sm ghost" data-act="busta-rileggi" data-id="${b.id}">${ic.doc} Rileggi</button>` : ''}<button class="btn sm ghost" data-act="cdc-invia" data-id="${b.id}">${ic.link} ${b.cdc ? 'Aggiorna in' : 'Invia a'} Conto di Casa</button></div></div>`;
   const chk = controlla(b); const problemi = chk.filter((c) => c.lettera);
   h += `<div class="card"><h2>Controllo</h2>${chk.map((c) => `<div class="chk ${c.s}"><div class="dot">${c.s === 'ok' ? ic.check : c.s === 'warn' ? ic.alert : ic.info}</div><div><b>${esc(c.t)}</b><p>${esc(c.p)}</p></div></div>`).join('')}
     <button class="btn ${problemi.length ? '' : 'ghost'} block" style="margin-top:12px" data-act="lettera" data-id="${b.id}">${ic.mail} ${problemi.length ? 'Chiedi chiarimenti all’ufficio paghe' : 'Scrivi all’ufficio paghe'}</button></div>`;
@@ -941,9 +1063,20 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
   <label class="field"><span>Note</span><textarea class="inp" name="note">${esc(b.note || '')}</textarea></label></details>
   <div class="btns" style="margin-top:14px"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`;
   const sh = openSheet(h); const form = $('form', sh);
+  const verifica = () => {
+    const n = toNum(form.netto.value), l = toNum(form.lordo.value), t = toNum(form.trattenute.value); let box = $('#contiBox', sh);
+    if (!box) { box = document.createElement('p'); box.id = 'contiBox'; box.className = 'note'; form.querySelector('.fgrid:nth-of-type(2)').after(box); }
+    if (n == null || l == null) { box.textContent = ''; return; }
+    const diff = t != null ? l - t - n : null;
+    if (n > l * 1.3) box.innerHTML = `<span style="color:var(--warn)">${ic.alert.replace('<svg', '<svg width="14" height="14" style="vertical-align:-2px"')} Il netto è molto più alto del lordo: controlla i due valori.</span>`;
+    else if (diff != null && Math.abs(diff) > 1.5) box.innerHTML = `<span style="color:var(--warn)">Lordo − trattenute = ${eur(l - t)}, ma il netto è ${eur(n)}: uno dei tre valori potrebbe essere sbagliato.</span>`;
+    else if (diff != null) box.innerHTML = `<span style="color:var(--ok)">I conti tornano: lordo − trattenute = netto${Math.abs(diff) > 0.01 ? ` (arrotondamento ${eur(-diff)})` : ''}.</span>`;
+    else box.textContent = '';
+  };
+  ['netto', 'lordo', 'trattenute'].forEach((k) => form[k].addEventListener('input', verifica)); verifica();
   sh.addEventListener('click', (e) => {
     if (e.target.closest('[data-x="cancel"]')) closeSheet();
-    const ins = e.target.closest('[data-insegna]'); if (ins) insegna(ins.dataset.insegna, testo, (v) => { form[ins.dataset.insegna].value = fmtIn(v); form[ins.dataset.insegna].classList.add('found'); });
+    const ins = e.target.closest('[data-insegna]'); if (ins) insegna(ins.dataset.insegna, testo, (v) => { form[ins.dataset.insegna].value = fmtIn(v); form[ins.dataset.insegna].classList.add('found'); verifica(); });
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault(); const fd = new FormData(form);
@@ -981,6 +1114,15 @@ async function caricaBusta(files) {
   try { testo = await leggiFile(file, (p) => { const el = $('#prog', sh); if (el) el.textContent = `Riconoscimento del testo ${Math.round(p * 100)}%`; }); found = parseBusta(testo); }
   catch (e) { found = {}; }
   closeSheet(); setTimeout(() => bustaForm(Object.assign({}, found), found, { id, testo }), 230);
+}
+async function rileggiBusta(b) {
+  const rec = await fileGet(b.fileId); if (!rec) { toast('Il documento non è su questo dispositivo'); return; }
+  const sh = openSheet(`<h3>Rileggo la busta…</h3><p class="lead" id="prog">${esc(rec.name)}</p><div style="text-align:center;padding:16px"><span class="spin"></span></div>`);
+  let testo = '', found = {};
+  try { const f = new File([rec.blob], rec.name, { type: rec.type }); testo = await leggiFile(f, (x, l) => { const el = $('#prog', sh); if (el) el.textContent = `${l ? l + ' · ' : ''}${Math.round((x || 0) * 100)}%`; }); found = parseBusta(testo); } catch (e) {}
+  closeSheet();
+  const pref = Object.assign({}, b); Object.keys(found).forEach((k) => { if (!k.startsWith('_') && found[k] != null && k !== 'jobId') pref[k] = found[k]; });
+  setTimeout(() => bustaForm(pref, found, { id: b.fileId, testo }), 230);
 }
 function lettera(b) {
   const j = job(b.jobId); const P = S.profilo; const chk = controlla(b).filter((c) => c.lettera);
@@ -1965,6 +2107,7 @@ const actions = {
   },
   'busta-upload'() { if (!S.lavori.length) { toast('Prima aggiungi il lavoro a cui appartiene'); return actions['job-new'](); } caricaBusta(); },
   'busta-new'() { bustaForm(); },
+  'busta-rileggi'(el) { rileggiBusta(S.buste.find((x) => x.id === el.dataset.id)); },
   'busta-edit'(el) { const b = S.buste.find((x) => x.id === el.dataset.id); bustaForm(Object.assign({}, b), {}, null); },
   async 'busta-del'(el) { if (!(await ask('Eliminare la busta?', 'La busta e il documento allegato verranno rimossi.', 'Elimina'))) return; const b = S.buste.find((x) => x.id === el.dataset.id); if (b && b.fileId) fileDel(b.fileId); S.buste = S.buste.filter((x) => x.id !== el.dataset.id); segnaEliminato(el.dataset.id); save(); location.hash = '#buste'; toast('Busta eliminata'); },
   'filtro-buste'(el) { filtroBuste = el.dataset.id; render(); },
@@ -2086,6 +2229,6 @@ async function boot() {
   setInterval(() => { if (S.timbro && ['home', 'turni'].includes(route()) && !sheetStack.length) render(); }, 60000);
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (S.tema === 'auto') applyTheme(); });
-window.__cedolino = { get S() { return S; }, stima, controlla, parseBusta, parseContratto, parseCU, parsePlanning, annoFiscale, naspiDati, promemoria, mergeStati };
+window.__cedolino = { get S() { return S; }, stima, controlla, parseBusta, leggiFile, parseContratto, parseCU, parsePlanning, annoFiscale, naspiDati, promemoria, mergeStati };
 boot();
 })();
