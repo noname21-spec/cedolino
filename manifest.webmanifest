@@ -1,0 +1,44 @@
+{
+  "id": "./",
+  "name": "Cedolino – buste paga",
+  "short_name": "Cedolino",
+  "description": "Buste paga, turni, contratti e lavori: calcola il netto, archivia e controlla le tue buste paga.",
+  "lang": "it",
+  "dir": "ltr",
+  "start_url": "./?app=pwa#home",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "portrait",
+  "background_color": "#0A1230",
+  "theme_color": "#0A1230",
+  "categories": ["finance", "productivity", "business"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ],
+  "shortcuts": [
+    { "name": "Carica una busta paga", "short_name": "Carica busta", "url": "./?app=pwa#azione-busta", "icons": [{ "src": "icons/sc/busta.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Inizio o fine turno", "short_name": "Timbra", "url": "./?app=pwa#azione-timbra", "icons": [{ "src": "icons/sc/turno.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Turni del mese", "short_name": "Turni", "url": "./?app=pwa#turni", "icons": [{ "src": "icons/sc/turni.png", "sizes": "96x96", "type": "image/png" }] },
+    { "name": "Calcola il netto", "short_name": "Calcola", "url": "./?app=pwa#calcola", "icons": [{ "src": "icons/sc/calcola.png", "sizes": "96x96", "type": "image/png" }] }
+  ],
+  "share_target": {
+    "action": "./share-target",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": { "title": "title", "text": "text", "files": [{ "name": "file", "accept": ["application/pdf", ".pdf", "image/*"] }] }
+  },
+  "file_handlers": [
+    { "action": "./?app=pwa#condiviso", "accept": { "application/pdf": [".pdf"] } }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" },
+  "screenshots": [
+    { "src": "screenshots/home.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "La prossima busta stimata e cosa fare ora" },
+    { "src": "screenshots/busta.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "Controllo della busta paga" },
+    { "src": "screenshots/turni.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "Turni, ore extra e ferie" },
+    { "src": "screenshots/lavori.png", "sizes": "780x1688", "type": "image/png", "form_factor": "narrow", "label": "Tutti i tuoi lavori e contratti" }
+  ]
+}
