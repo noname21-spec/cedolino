@@ -136,7 +136,7 @@ function viewBusta(id) {
   return h;
 }
 
-const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi INPS', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile INPS', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'giorni'], ['permessiRes', 'Permessi residui', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
+const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'giorni'], ['permessiRes', 'Permessi residui', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
 function bustaForm(pref = {}, found = {}, fileRec = null) {
   const b = Object.assign({ tipo: 'mensile', ym: addYM(curYM(), -1), jobId: (attivo() || {}).id }, pref);
   const testo = fileRec ? fileRec.testo : (pref.testo || '');
@@ -263,7 +263,7 @@ function viewLavoro(id) {
   h += `<div class="card hero"><div class="row">${jobAvatar(j, 52)}<div class="grow"><div class="kicker">${cor ? 'In corso' : 'Concluso'}${!cor && j.motivoFine ? ' · ' + esc(MOTIVI[j.motivoFine] || '') : ''}</div><div class="title" style="font-size:20px;font-weight:600">${jobPeriodo(j)}</div><div class="muted small">${durataTxt(jobMesi(j))}${j.sede ? ' · ' + esc(j.sede) : ''}</div></div></div>
     <div class="row" style="margin-top:12px;flex-wrap:wrap">${cor && S.attivo !== j.id ? `<button class="btn sm ghost" data-act="set-attivo" data-id="${j.id}">${ic.star} Lavoro principale</button>` : ''}<a class="btn sm ghost" href="#fine-${j.id}">${ic.flag} ${cor ? 'Fine contratto e NASpI' : 'Liquidazione e NASpI'}</a></div></div>`;
   h += `<div class="card"><h2>Contratto</h2>
-    <div class="kv"><span class="k">CCNL</span><span class="v">${esc((j.ccnl === 'altro' && j.ccnlNome) || CCNL_NOMI[j.ccnl || 'commercio'])}</span></div>
+    <div class="kv"><span class="k">CCNL</span><span class="v">${esc((j.ccnl === 'altro' && j.ccnlNome) || CCNL_NOMI[j.ccnl || 'commercio'] || j.ccnlNome || '')}</span></div>
     <div class="kv"><span class="k">Livello</span><span class="v">${esc(livelloLabel(j))}</span></div>
     <div class="kv"><span class="k">Orario</span><span class="v">${j.tipo === 'chiamata' ? 'a chiamata' + (j.disponibilita ? ', con disponibilità' : '') : `${num(c.oreSett)} h/sett. (${Math.round(c.p * 100)}%)`}</span></div>
     ${j.tipo !== 'chiamata' ? `<div class="kv"><span class="k">Retribuzione mensile lorda</span><span class="v">${eur(c.base)}${c.stima ? ' *' : ''}</span></div>` : ''}
@@ -350,8 +350,8 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
   <div class="sec-title">Contratto e paga</div>
   <label class="field"><span>CCNL${tag('ccnl')}</span><select class="inp" name="ccnl">${Object.entries(CCNL_NOMI).map(([k, v]) => `<option value="${k}" ${(j.ccnl || 'commercio') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
   ${['commercio', 'turismo', 'pubblici', 'multiservizi'].map((k) => `<div data-show="${k}"><label class="field"><span>Livello${tag('livello')}</span>${lvSel(k)}<span class="hint">${k === 'commercio' ? 'Commessi e addetti vendita di solito sono al IV livello' : `Minimi dal ${E.TABELLE[k].dal.split('-').reverse().map((x, i) => (i === 0 ? MESI[Number(x) - 1] : x)).join(' ')}`}</span></label></div>`).join('')}
-  <div data-show="altro"><label class="field"><span>Nome del contratto</span><input class="inp" name="ccnlNome" value="${esc(j.ccnlNome || '')}" placeholder="es. Esercizi cinematografici"></label>
-  <div class="fgrid"><label class="field"><span>Livello</span><input class="inp" name="livelloAltro" value="${esc(j.ccnl === 'altro' ? j.livello || '' : '')}"></label><label class="field"><span>Minimo mensile tempo pieno</span><input class="inp" inputmode="decimal" name="minimoManuale" value="${fmtIn(j.minimoManuale)}" placeholder="€ dalla busta"></label></div>
+  <div data-show="altro cinema"><p class="note" data-cine style="margin:0 0 10px">Per il cinema metto già 14 mensilità, divisore 173 e straordinario al 30%: inserisci il minimo mensile del tuo livello, lo trovi in busta (paga base + contingenza + EDR).</p><label class="field" data-nome><span>Nome del contratto</span><input class="inp" name="ccnlNome" value="${esc(j.ccnlNome || '')}" placeholder="es. Esercizi cinematografici"></label>
+  <div class="fgrid"><label class="field"><span>Livello${tag('livello')}</span><input class="inp" name="livelloAltro" value="${esc(['altro', 'cinema'].includes(j.ccnl) ? j.livello || '' : '')}"></label><label class="field"><span>Minimo mensile tempo pieno</span><input class="inp" inputmode="decimal" name="minimoManuale" value="${fmtIn(j.minimoManuale)}" placeholder="€ dalla busta"></label></div>
   <div class="fgrid"><label class="field"><span>Mensilità</span><select class="inp" name="mensilita">${[12, 13, 14].map((m) => `<option ${Number(j.mensilita || 14) === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label><label class="field"><span>Divisore orario</span><input class="inp" inputmode="numeric" name="divisoreOrario" value="${j.divisoreOrario || ''}" placeholder="es. 168"></label></div></div>
   <div class="fgrid"><label class="field"><span>Ore a settimana${tag('oreSett')}</span><input class="inp" inputmode="decimal" name="oreSett" value="${fmtIn(j.oreSett)}"></label><label class="field"><span>Ore tempo pieno</span><input class="inp" inputmode="decimal" name="oreSettFull" value="${fmtIn(j.oreSettFull)}"></label></div>
   <div data-chiamata><label class="check"><input type="checkbox" name="disponibilita" ${j.disponibilita ? 'checked' : ''}><span class="switch"></span><span class="grow">Con obbligo di disponibilità ${tag('disponibilita')}<span class="hint">Ti spetta l’indennità di disponibilità (20%)</span></span></label></div>
@@ -372,7 +372,8 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
   <label class="field"><span>Note</span><textarea class="inp" name="note">${esc(j.note || '')}</textarea></label></details>
   <div class="btns" style="margin-top:14px"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`;
   const sh = openSheet(h); const form = $('form', sh);
-  const sync = () => { const v = form.ccnl.value; $$('[data-show]', sh).forEach((d) => (d.style.display = d.dataset.show === v ? '' : 'none')); $$('[data-noncomm]', sh).forEach((d) => (d.style.display = v === 'commercio' ? 'none' : '')); $('[data-chiamata]', sh).style.display = form.tipo.value === 'chiamata' ? '' : 'none'; $('[data-fine]', sh).style.display = form.fine.value ? '' : 'none'; };
+  const sync = () => { const v = form.ccnl.value; $$('[data-show]', sh).forEach((d) => (d.style.display = d.dataset.show.split(' ').includes(v) ? '' : 'none')); $('[data-cine]', sh).style.display = v === 'cinema' ? '' : 'none'; $('[data-nome]', sh).style.display = v === 'cinema' ? 'none' : '';
+    if (v === 'cinema') { if (!form.divisoreOrario.value) form.divisoreOrario.value = '173'; form.mensilita.value = form.mensilita.value || '14'; ['straord48', 'straordOltre48'].forEach((k) => { if (form['mg_' + k].value === '15' || form['mg_' + k].value === '20') form['mg_' + k].value = '30'; }); } $$('[data-noncomm]', sh).forEach((d) => (d.style.display = v === 'commercio' ? 'none' : '')); $('[data-chiamata]', sh).style.display = form.tipo.value === 'chiamata' ? '' : 'none'; $('[data-fine]', sh).style.display = form.fine.value ? '' : 'none'; };
   ['ccnl', 'tipo', 'fine'].forEach((n) => form[n].addEventListener('change', sync)); form.fine.addEventListener('input', sync); sync();
   sh.addEventListener('click', async (e) => {
     if (e.target.closest('[data-x="cancel"]')) closeSheet();
@@ -386,8 +387,9 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
     const rec = pref.id ? job(pref.id) : { id: uid(), documenti: [] };
     rec.azienda = fd.get('azienda').trim(); rec.ruolo = fd.get('ruolo').trim(); rec.sede = fd.get('sede').trim();
     rec.tipo = fd.get('tipo'); rec.inizio = fd.get('inizio'); rec.fine = fd.get('fine') || null; rec.motivoFine = rec.fine ? fd.get('motivoFine') || null : null; rec.ccnl = fd.get('ccnl');
-    rec.livello = rec.ccnl === 'altro' ? fd.get('livelloAltro') : fd.get('lv_' + rec.ccnl);
-    rec.ccnlNome = fd.get('ccnlNome'); rec.minimoManuale = rec.ccnl === 'altro' ? toNum(fd.get('minimoManuale')) : null;
+    const libero = ['altro', 'cinema'].includes(rec.ccnl);
+    rec.livello = libero ? fd.get('livelloAltro') : fd.get('lv_' + rec.ccnl);
+    rec.ccnlNome = rec.ccnl === 'cinema' ? 'Esercizi cinematografici' : fd.get('ccnlNome'); rec.minimoManuale = libero ? toNum(fd.get('minimoManuale')) : null;
     rec.mensilita = Number(fd.get('mensilita')); rec.divisoreOrario = toNum(fd.get('divisoreOrario'));
     rec.oreSett = toNum(fd.get('oreSett')) || 40; rec.oreSettFull = toNum(fd.get('oreSettFull')) || 40; rec.giorniSett = toNum(fd.get('giorniSett')) || 5;
     rec.superminimo = toNum(fd.get('superminimo')) || 0; rec.scatti = toNum(fd.get('scatti')) || 0; rec.scattoImporto = toNum(fd.get('scattoImporto'));
@@ -395,7 +397,7 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
     rec.oltre15 = !!fd.get('oltre15'); rec.domenicaRiposo = !!fd.get('domenicaRiposo'); rec.mansioni = (fd.get('mansioni') || '').trim();
     const mg = {}; Object.keys(E.CCNL.commercio.magg).forEach((k) => { const v = toNum(fd.get('mg_' + k)); if (v != null && v !== E.CCNL.commercio.magg[k]) mg[k] = v; }); rec.magg = mg;
     rec.resFerie = toNum(fd.get('resFerie')); rec.resPermessi = toNum(fd.get('resPermessi')); rec.resData = fd.get('resData') || null; rec.note = fd.get('note') || '';
-    if (rec.ccnl === 'altro' && !rec.minimoManuale) { toast('Per un altro contratto indica il minimo mensile (lo trovi in busta)'); return; }
+    if (libero && !rec.minimoManuale) { toast('Indica il minimo mensile a tempo pieno (lo trovi in busta: paga base + contingenza)'); return; }
     if (rec.fine && rec.inizio && rec.fine < rec.inizio) { toast('La data di fine è prima dell’inizio'); return; }
     if (pref._doc) { rec.documenti = rec.documenti || []; rec.documenti.push(pref._doc); }
     if (!pref.id) { S.lavori.push(rec); const cur = job(S.attivo); if (!cur || (corrente(rec) && !corrente(cur))) S.attivo = rec.id; }

@@ -41,7 +41,7 @@ const TIPI = { indeterminato: 'Tempo indeterminato', determinato: 'Tempo determi
 const TIPI_EN = { indeterminato: 'Permanent', determinato: 'Fixed-term', apprendistato: 'Apprenticeship', chiamata: 'On-call', stagionale: 'Seasonal', somministrazione: 'Agency', altro: '' };
 const MOTIVI = { scadenza: 'Scadenza del contratto', licenziamento: 'Licenziamento', consensuale: 'Risoluzione consensuale (in conciliazione)', giustacausa: 'Dimissioni per giusta causa', dimissioni: 'Dimissioni volontarie', altro: 'Altro' };
 const CAT_DOC = { contratto: 'Contratto', proroga: 'Proroga / trasformazione', lettera: 'Lettera / comunicazione', cu: 'Certificazione Unica', cessazione: 'Cessazione / dimissioni', altro: 'Altro' };
-const CCNL_NOMI = { commercio: 'Commercio – Terziario Confcommercio', turismo: E.TABELLE.turismo.nome, pubblici: E.TABELLE.pubblici.nome, multiservizi: E.TABELLE.multiservizi.nome, altro: 'Altro contratto (es. cinema)' };
+const CCNL_NOMI = { commercio: 'Commercio – Terziario Confcommercio', turismo: E.TABELLE.turismo.nome, pubblici: E.TABELLE.pubblici.nome, multiservizi: E.TABELLE.multiservizi.nome, cinema: 'Esercizi cinematografici (cinema)', altro: 'Altro contratto' };
 function livelliDi(ccnl) {
   if (ccnl === 'commercio') return Object.entries(E.COMMERCIO_LIVELLI).map(([k, v]) => [k, v.label, v.t2611]);
   if (E.TABELLE[ccnl]) return Object.entries(E.TABELLE[ccnl].livelli).map(([k, v]) => [k, v[0], v[1]]);
@@ -309,8 +309,8 @@ function controlla(b) {
   }
   if (b.lordo && b.contributi) {
     const base = b.imponibilePrev || b.lordo; const atteso = base * cr / 100; const diff = b.contributi - atteso;
-    if (Math.abs(diff) > Math.max(3, atteso * 0.06)) out.push({ s: 'warn', t: `Contributi INPS diversi dal ${num(cr, 2)}%`, p: `Su ${eur(base)} ci si aspetta circa ${eur(atteso)}, in busta ${eur(b.contributi)}. Se ci sono rimborsi o voci non soggette a contributi è normale; altrimenti chiedi spiegazioni.` });
-    else out.push({ s: 'ok', t: 'Contributi INPS corretti', p: `${eur(b.contributi)}, circa il ${num(cr, 2)}% dell'imponibile.` });
+    if (Math.abs(diff) > Math.max(3, atteso * 0.06)) out.push({ s: 'warn', t: `Contributi diversi dal ${num(cr, 2)}%`, p: `Su ${eur(base)} ci si aspetta circa ${eur(atteso)}, in busta ${eur(b.contributi)}. Se ci sono rimborsi o voci non soggette a contributi è normale; altrimenti chiedi spiegazioni.` });
+    else out.push({ s: 'ok', t: `Contributi ${/fpls|enpals/i.test(b.testo || '') ? 'FPLS (ex ENPALS)' : 'INPS'} corretti`, p: `${eur(b.contributi)}, circa il ${num(cr, 2)}% dell'imponibile.` });
   }
   if (b.lordo && b.netto && st) {
     const red25 = toNum(P.reddito2025);
@@ -445,14 +445,19 @@ const GLOSSARIO = [
     ['Superminimo', /superminimo|super\s*min/i, 'Una parte in più rispetto al minimo del CCNL concordata con l’azienda. Può essere "assorbibile" dagli aumenti futuri.'],
     ['Scatti di anzianità', /scatt/i, 'Aumenti che maturano ogni 3 anni nella stessa azienda (nel Commercio fino a 10 scatti).'],
     ['Lavoro supplementare', /supplement/i, 'Ore in più rispetto all’orario del part-time, fino all’orario pieno. Nel CCNL Commercio sono pagate con il 35% in più.'],
-    ['Straordinario', /straordin/i, 'Ore oltre le 40 settimanali: +15% fino alla 48ª ora, +20% oltre; straordinario notturno +50%.'],
+    ['Straordinario', /straordin/i, 'Ore oltre le 40 settimanali. Nel commercio +15% fino alla 48ª ora e +20% oltre (notturno +50%); nel CCNL dei cinema +30%.'],
     ['Lavoro festivo / domenicale', /festiv|domenic/i, 'Ore lavorate nei festivi o di domenica: nel Commercio +30%. Nel 2026 queste maggiorazioni sono tassate al 15% fino a 1.500 € se il reddito 2025 non supera 40.000 €.'],
     ['Festività non goduta', /fest.*(non\s*god|cadent)/i, 'Quando una festività cade di domenica o nel giorno di riposo spetta una giornata di paga in più.'],
     ['Tredicesima / Quattordicesima', /13\s*\^?|14\s*\^?|tredicesima|quattordicesima|mensilit/i, 'Mensilità aggiuntive: la 13ª a dicembre, la 14ª a giugno/luglio. Si maturano 1/12 per ogni mese lavorato.'],
     ['Indennità di disponibilità', /disponibilit/i, 'Nel lavoro a chiamata con obbligo di rispondere spetta un’indennità pari al 20% della retribuzione per i periodi in cui resti a disposizione.'],
   ]],
   ['Trattenute', [
-    ['Contributi INPS (IVS)', /i\.?v\.?s|inps|contribut/i, 'Contributi per la pensione a tuo carico: in genere il 9,19% dell’imponibile.'],
+    ['Contributi INPS (IVS)', /i\.?v\.?s|inps|contribut/i, 'Contributi per la pensione a tuo carico: in genere il 9,19% dell’imponibile. Possono esserci piccole quote in più (es. CIGS o FIS): la somma resta intorno al 9,2–9,5%.'],
+    ['Contributi FPLS (ex ENPALS)', /f\.?p\.?l\.?s|enpals/i, 'Nel cinema e nello spettacolo i contributi per la pensione vanno al Fondo pensioni lavoratori dello spettacolo dell’INPS (l’ex ENPALS). La quota a tuo carico è la stessa, il 9,19%: il resto lo paga il datore di lavoro.'],
+    ['Indennità di cassa', /indennit[aà]\s*(?:di\s*)?cassa|maneggio\s*denaro/i, 'Un piccolo importo fisso per chi lavora alla cassa e maneggia denaro (es. biglietteria del cinema, casse dei negozi).'],
+    ['Maggiorazione serale / notturna', /seral|nottur/i, 'Un’aggiunta alla paga oraria per le ore lavorate la sera o di notte, tipica di cinema, ristoranti ed eventi. Nel 2026 le maggiorazioni per lavoro notturno sono tassate al 15% (fino a 1.500 €) se il reddito 2025 non supera 40.000 €.'],
+    ['Welfare', /welfare/i, 'Una parte di quanto ti spetta data in beni e servizi (buoni, rimborsi) invece che in denaro: di solito non è tassata.'],
+    ['Permessi per riduzione d’orario', /riduz\w*\s*(?:d['’]?\s*)?orario/i, 'Ore di permesso retribuito. Nel CCNL dei cinema sono 44 all’anno (in proporzione se sei part-time).'],
     ['IRPEF lorda e netta', /irpef/i, 'L’imposta sul reddito: 23% fino a 28.000 €, 33% fino a 50.000 €, 43% oltre. Si riduce con le detrazioni: quella trattenuta è l’IRPEF netta.'],
     ['Detrazioni lavoro dipendente', /detraz/i, 'Sconto sull’IRPEF per chi lavora come dipendente; più il reddito è basso, più è alto (fino a 1.955 € l’anno).'],
     ['Addizionale regionale', /add.*reg/i, 'Imposta della regione sul reddito dell’anno prima, trattenuta in 11 rate da gennaio a novembre.'],
@@ -550,7 +555,7 @@ function cercaEtichetta(L, found, key, re, opts = {}) {
     const line = L[i]; const m = line.match(re); if (!m) continue;
     if (opts.not && opts.not.test(line)) continue;
     let vals = importiIn(line.slice(m.index + m[0].length));
-    if (!vals.length && L[i + 1]) vals = importiIn(L[i + 1]);
+    if (!vals.length && L[i + 1] && !opts.sameLine) vals = importiIn(L[i + 1]);
     if (vals.length) { found[key] = opts.last ? vals[vals.length - 1] : vals[0]; return; }
   }
 }
@@ -613,9 +618,9 @@ function parseBusta(text) {
     netto: [/netto\s*(?:del\s*mese|in\s*busta|a\s*pagare|busta|da\s*pagare|mese|corrisposto|retribuzione|a\s*liquidare)|\bnetto\b/i, /imponib|lordo|progress/i],
     lordo: [/totale\s*competenze|tot\.?\s*competenze|totale\s*lordo|lordo\s*(?:mensile|del\s*mese)|competenze\s*lorde|retribuzione\s*lorda|totale\s*retribuzione|totale\s*compensi/i, /progress/i],
     trattenute: [/totale\s*trattenute|tot\.?\s*trattenute|totale\s*ritenute|tot\.?\s*ritenute/i, /progress/i],
-    imponibilePrev: [/imponibile\s*(?:inps|previd|contrib|i\.?n\.?p\.?s)|imp\.?\s*(?:inps|prev)/i, /progress/i],
+    imponibilePrev: [/imponibile\s*(?:inps|previd|contrib|i\.?n\.?p\.?s|f\.?p\.?l\.?s|ex[\s-]*enpals|enpals)|imp\.?\s*(?:inps|prev|fpls|enpals)/i, /progress/i],
     imponibileFisc: [/imponibile\s*(?:irpef|fiscale)|imp\.?\s*(?:irpef|fisc)/i, /progress/i],
-    contributi: [/(?:contribut[oi]|ritenut[ae])\s*(?:inps|ivs|previd|c\/dip)|contr\.?\s*ivs|c\.?\s*i\.?v\.?s|\bivs\b|inps\s*c\/dip|ritenute\s*previdenziali|tot\.?\s*contributi/i, /imponib|progress/i],
+    contributi: [/(?:contribut[oi]|ritenut[ae])\s*(?:inps|ivs|previd|c\/dip|f\.?p\.?l\.?s|ex[\s-]*enpals|enpals|aggiuntiv|fis\b|f\.i\.s|cigs|pension)|contr\.?\s*(?:ivs|fpls|enpals)|c\.?\s*i\.?v\.?s|\bivs\b|\bf\.?p\.?l\.?s\.?\b|ex[\s-]*enpals|inps\s*c\/dip|ritenute\s*previdenziali|tot\.?\s*contributi|\bcontribut[oi]\b/i, /imponib|progress|sindac|welfare|datore|ditta|azienda|ente\s*bil|fondo\s*(?:est|sanit)/i],
     irpef: [/irpef\s*(?:netta|trattenut|mese|a\s*debito|pagata|dovuta)|ritenut[ae]\s*(?:fiscal[ie]\s*)?irpef|ritenut[ae]\s*fiscal[ie]|\birpef\b(?!\s*(?:lorda|imponib|teorica|progress))/i, /imponib|imp\.\s*$|lorda|progress|detraz/i],
     addReg: [/add(?:izionale|\.|\s)*\s*reg/i, /imponib|progress/i],
     addCom: [/add(?:izionale|\.|\s)*\s*com/i, /imponib|progress/i],
@@ -627,6 +632,7 @@ function parseBusta(text) {
   if (lay) {
     const rows = righeLayout(lay);
     const colTratt = colonna(rows, /^trattenute$|\btrattenute\b(?!\s*:)/i);
+    const righeContr = new Map();
     const colOre = colonna(rows, /ore\s*\/\s*g+|^ore$|quantit[aà]|\bq\.?t[aà]\b|\bn\.?\s*ore/i);
     for (const [k, [re, not]] of Object.entries(RE)) {
       if (found[k] != null) continue;
@@ -635,19 +641,21 @@ function parseBusta(text) {
         const c = candidati(rows, lab);
         if (['contributi', 'irpef', 'addReg', 'addCom'].includes(k) && c.destra.length) {
           const inCol = colTratt && colTratt.p === lab.r.p && nellaColonna(lab.r, colTratt);
-          if (inCol) vals.push(valImp(inCol.s));
-          vals.push(c.destra[c.destra.length - 1].v, ...c.lista);
+          const scelto = inCol ? valImp(inCol.s) : c.destra[c.destra.length - 1].v;
+          if (k === 'contributi' && !/tot/i.test(lab.r.str) && !righeContr.has(lab.r)) { righeContr.set(lab.r, scelto); }
+          vals.push(scelto, ...c.lista);
         } else if (k === 'oreExtra') {
           const inCol = colOre && colOre.p === lab.r.p && nellaColonna(lab.r, colOre);
           if (inCol) vals.push(valImp(inCol.s)); else vals.push(...c.lista);
         } else vals.push(...c.lista);
       }
+      if (k === 'contributi' && righeContr.size > 1) vals.unshift([...righeContr.values()].reduce((s, v) => s + v, 0));
       if (vals.length) C[k] = [...new Set(vals)];
     }
     // tabella ferie/permessi: riga × colonna "Saldo/Residuo"
-    const colSaldo = colonna(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno\s*prec)|spettant|da\s*godere|disponibil/i);
+    const colSaldo = (() => { const ls = trovaEtichette(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno)(?!\s*prec)|spettant|da\s*godere|disponibil/i).filter((l) => !/prec|a\.\s*p|anno\s*prec/i.test(l.r.str.slice(l.its[0].o, l.its[l.its.length - 1].o + l.its[l.its.length - 1].s.length + 8))); if (!ls.length) return null; const l = ls.sort((a, b) => b.x1 - a.x1)[0]; return { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y }; })();
     const tab = (re) => {
-      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur/i).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
+      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur|non\s*god|liquid|indennit|\bratei\b|monetizz/i).filter((l) => !/non\s*god|liquid|indennit|\bratei\b|monetizz/i.test(l.r.str)).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
       for (const lab of labs) { const its = importiRiga(lab.r).filter((it) => it.x >= lab.x1 - 2); if (!its.length) continue; const it = colSaldo && colSaldo.p === lab.r.p ? nellaColonna(lab.r, colSaldo) || its[its.length - 1] : its[its.length - 1]; tot = (tot || 0) + valImp(it.s); }
       return tot;
     };
@@ -661,11 +669,12 @@ function parseBusta(text) {
     sp.sort((a, b) => a[0] - b[0] || b[1] - a[1]); const out = []; let end = -1; sp.forEach((s) => { if (s[0] >= end) { out.push(s[0]); end = s[1]; } }); return out; };
   for (const [k, [re, not]] of Object.entries(RE)) {
     if (found[k] != null) continue;
-    const vals = C[k] ? [...C[k]] : [];
+    const vals = C[k] ? [...C[k]] : []; const somma = [];
     for (let i = 0; i < L.length; i++) {
       const line = L[i]; const m = line.match(re); if (!m || (not && not.test(line.slice(Math.max(0, m.index - 7), m.index + m[0].length)))) continue;
       let after = importiIn(line.slice(m.index + m[0].length));
       if (['contributi', 'irpef', 'addReg', 'addCom'].includes(k) && after.length > 1) after = [after[after.length - 1], ...after];
+      if (k === 'contributi' && after.length && !/tot/i.test(line)) somma.push(after[0]);
       vals.push(...after);
       if (!after.length && L[i + 1]) {
         const sotto = importiIn(L[i + 1]); const pos = testate(line);
@@ -675,6 +684,7 @@ function parseBusta(text) {
         vals.push(...sotto);
       }
     }
+    if (k === 'contributi' && somma.length > 1 && !(C[k] && C[k].length)) vals.unshift(somma.reduce((s, v) => s + v, 0));
     if (vals.length) C[k] = [...new Set(vals)];
   }
   // scelgo i valori che "tornano": netto = lordo − trattenute (± arrotondamento)
@@ -694,13 +704,17 @@ function parseBusta(text) {
   pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
   pick('oreExtra', (v) => v > 0 && v <= 120);
   // ferie e permessi senza posizioni: ultimo numero della riga
-  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b/i, { last: true, not: /god(?:ute)?\s*$/i });
-  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true });
+  const nonSaldo = /non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i;
+  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b(?!\s*\/\s*permess)/i, { last: true, sameLine: true, not: nonSaldo });
+  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true, sameLine: true, not: /ferie\s*\/\s*permess|non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i });
   const mesiRe = new RegExp(`\\b(${MESI.join('|')})\\s*[-/]?\\s*(20\\d{2})`, 'i');
   const pm = text.match(mesiRe);
   if (pm) found.ym = `${pm[2]}-${pad(MESI.indexOf(pm[1].toLowerCase()) + 1)}`;
   else { const n = text.match(/\b(0?[1-9]|1[0-2])\s*[/-]\s*(20\d{2})\b/); if (n) found.ym = `${n[2]}-${pad(n[1])}`; }
-  if (/tredicesima|13\s*\^?\s*mens/i.test(text)) found.tipo = 'tredicesima'; else if (/quattordicesima|14\s*\^?\s*mens/i.test(text)) found.tipo = 'quattordicesima';
+  // busta solo di 13ª/14ª (non una busta mensile che contiene anche la 13ª)
+  const ordinaria = /paga\s*base|retribuzione\s*(?:ordinaria|mensile)|\bretribuzione\b\s+\d|ore\s*ordinarie|minimo\s*(?:tab|contr)|contingenza|stipendio/i.test(text);
+  if (!ordinaria && /tredicesima|13\s*\^?\s*mens|gratifica\s*natalizia/i.test(text)) found.tipo = 'tredicesima';
+  else if (!ordinaria && /quattordicesima|14\s*\^?\s*mens|premio\s*annuale/i.test(text)) found.tipo = 'quattordicesima';
   const jl = S.lavori.find((j) => j.azienda && text.toLowerCase().includes(j.azienda.toLowerCase().split(/\s+/)[0]));
   if (jl) found.jobId = jl.id;
   Object.keys(found).forEach((k) => { if (typeof found[k] === 'number') found[k] = Math.round(found[k] * 100) / 100; });
@@ -727,7 +741,7 @@ function parseContratto(raw) {
   else if (/turismo|alberghi|federalberghi/i.test(flat)) f.ccnl = 'turismo';
   else if (/multiservizi|imprese\s*di\s*pulizia|servizi\s*di\s*pulizia/i.test(flat)) f.ccnl = 'multiservizi';
   else if (/terziario|distribuzione\s*e\s*(?:dei\s*)?servizi|commercio|confcommercio|confesercenti/i.test(flat)) f.ccnl = 'commercio';
-  else if (/cinematograf|cinema/i.test(flat)) { f.ccnl = 'altro'; f.ccnlNome = 'Esercizi cinematografici'; }
+  else if (/cinematograf|cinema|multisala|anec\b/i.test(flat)) f.ccnl = 'cinema';
   // tipo di contratto
   if (/intermittente|a\s*chiamata|job\s*on\s*call/i.test(flat)) f.tipo = 'chiamata';
   else if (/apprendistato/i.test(flat)) f.tipo = 'apprendistato';
@@ -1046,7 +1060,7 @@ function viewBusta(id) {
   return h;
 }
 
-const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi INPS', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile INPS', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'giorni'], ['permessiRes', 'Permessi residui', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
+const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'giorni'], ['permessiRes', 'Permessi residui', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
 function bustaForm(pref = {}, found = {}, fileRec = null) {
   const b = Object.assign({ tipo: 'mensile', ym: addYM(curYM(), -1), jobId: (attivo() || {}).id }, pref);
   const testo = fileRec ? fileRec.testo : (pref.testo || '');
@@ -1173,7 +1187,7 @@ function viewLavoro(id) {
   h += `<div class="card hero"><div class="row">${jobAvatar(j, 52)}<div class="grow"><div class="kicker">${cor ? 'In corso' : 'Concluso'}${!cor && j.motivoFine ? ' · ' + esc(MOTIVI[j.motivoFine] || '') : ''}</div><div class="title" style="font-size:20px;font-weight:600">${jobPeriodo(j)}</div><div class="muted small">${durataTxt(jobMesi(j))}${j.sede ? ' · ' + esc(j.sede) : ''}</div></div></div>
     <div class="row" style="margin-top:12px;flex-wrap:wrap">${cor && S.attivo !== j.id ? `<button class="btn sm ghost" data-act="set-attivo" data-id="${j.id}">${ic.star} Lavoro principale</button>` : ''}<a class="btn sm ghost" href="#fine-${j.id}">${ic.flag} ${cor ? 'Fine contratto e NASpI' : 'Liquidazione e NASpI'}</a></div></div>`;
   h += `<div class="card"><h2>Contratto</h2>
-    <div class="kv"><span class="k">CCNL</span><span class="v">${esc((j.ccnl === 'altro' && j.ccnlNome) || CCNL_NOMI[j.ccnl || 'commercio'])}</span></div>
+    <div class="kv"><span class="k">CCNL</span><span class="v">${esc((j.ccnl === 'altro' && j.ccnlNome) || CCNL_NOMI[j.ccnl || 'commercio'] || j.ccnlNome || '')}</span></div>
     <div class="kv"><span class="k">Livello</span><span class="v">${esc(livelloLabel(j))}</span></div>
     <div class="kv"><span class="k">Orario</span><span class="v">${j.tipo === 'chiamata' ? 'a chiamata' + (j.disponibilita ? ', con disponibilità' : '') : `${num(c.oreSett)} h/sett. (${Math.round(c.p * 100)}%)`}</span></div>
     ${j.tipo !== 'chiamata' ? `<div class="kv"><span class="k">Retribuzione mensile lorda</span><span class="v">${eur(c.base)}${c.stima ? ' *' : ''}</span></div>` : ''}
@@ -1260,8 +1274,8 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
   <div class="sec-title">Contratto e paga</div>
   <label class="field"><span>CCNL${tag('ccnl')}</span><select class="inp" name="ccnl">${Object.entries(CCNL_NOMI).map(([k, v]) => `<option value="${k}" ${(j.ccnl || 'commercio') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
   ${['commercio', 'turismo', 'pubblici', 'multiservizi'].map((k) => `<div data-show="${k}"><label class="field"><span>Livello${tag('livello')}</span>${lvSel(k)}<span class="hint">${k === 'commercio' ? 'Commessi e addetti vendita di solito sono al IV livello' : `Minimi dal ${E.TABELLE[k].dal.split('-').reverse().map((x, i) => (i === 0 ? MESI[Number(x) - 1] : x)).join(' ')}`}</span></label></div>`).join('')}
-  <div data-show="altro"><label class="field"><span>Nome del contratto</span><input class="inp" name="ccnlNome" value="${esc(j.ccnlNome || '')}" placeholder="es. Esercizi cinematografici"></label>
-  <div class="fgrid"><label class="field"><span>Livello</span><input class="inp" name="livelloAltro" value="${esc(j.ccnl === 'altro' ? j.livello || '' : '')}"></label><label class="field"><span>Minimo mensile tempo pieno</span><input class="inp" inputmode="decimal" name="minimoManuale" value="${fmtIn(j.minimoManuale)}" placeholder="€ dalla busta"></label></div>
+  <div data-show="altro cinema"><p class="note" data-cine style="margin:0 0 10px">Per il cinema metto già 14 mensilità, divisore 173 e straordinario al 30%: inserisci il minimo mensile del tuo livello, lo trovi in busta (paga base + contingenza + EDR).</p><label class="field" data-nome><span>Nome del contratto</span><input class="inp" name="ccnlNome" value="${esc(j.ccnlNome || '')}" placeholder="es. Esercizi cinematografici"></label>
+  <div class="fgrid"><label class="field"><span>Livello${tag('livello')}</span><input class="inp" name="livelloAltro" value="${esc(['altro', 'cinema'].includes(j.ccnl) ? j.livello || '' : '')}"></label><label class="field"><span>Minimo mensile tempo pieno</span><input class="inp" inputmode="decimal" name="minimoManuale" value="${fmtIn(j.minimoManuale)}" placeholder="€ dalla busta"></label></div>
   <div class="fgrid"><label class="field"><span>Mensilità</span><select class="inp" name="mensilita">${[12, 13, 14].map((m) => `<option ${Number(j.mensilita || 14) === m ? 'selected' : ''}>${m}</option>`).join('')}</select></label><label class="field"><span>Divisore orario</span><input class="inp" inputmode="numeric" name="divisoreOrario" value="${j.divisoreOrario || ''}" placeholder="es. 168"></label></div></div>
   <div class="fgrid"><label class="field"><span>Ore a settimana${tag('oreSett')}</span><input class="inp" inputmode="decimal" name="oreSett" value="${fmtIn(j.oreSett)}"></label><label class="field"><span>Ore tempo pieno</span><input class="inp" inputmode="decimal" name="oreSettFull" value="${fmtIn(j.oreSettFull)}"></label></div>
   <div data-chiamata><label class="check"><input type="checkbox" name="disponibilita" ${j.disponibilita ? 'checked' : ''}><span class="switch"></span><span class="grow">Con obbligo di disponibilità ${tag('disponibilita')}<span class="hint">Ti spetta l’indennità di disponibilità (20%)</span></span></label></div>
@@ -1282,7 +1296,8 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
   <label class="field"><span>Note</span><textarea class="inp" name="note">${esc(j.note || '')}</textarea></label></details>
   <div class="btns" style="margin-top:14px"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`;
   const sh = openSheet(h); const form = $('form', sh);
-  const sync = () => { const v = form.ccnl.value; $$('[data-show]', sh).forEach((d) => (d.style.display = d.dataset.show === v ? '' : 'none')); $$('[data-noncomm]', sh).forEach((d) => (d.style.display = v === 'commercio' ? 'none' : '')); $('[data-chiamata]', sh).style.display = form.tipo.value === 'chiamata' ? '' : 'none'; $('[data-fine]', sh).style.display = form.fine.value ? '' : 'none'; };
+  const sync = () => { const v = form.ccnl.value; $$('[data-show]', sh).forEach((d) => (d.style.display = d.dataset.show.split(' ').includes(v) ? '' : 'none')); $('[data-cine]', sh).style.display = v === 'cinema' ? '' : 'none'; $('[data-nome]', sh).style.display = v === 'cinema' ? 'none' : '';
+    if (v === 'cinema') { if (!form.divisoreOrario.value) form.divisoreOrario.value = '173'; form.mensilita.value = form.mensilita.value || '14'; ['straord48', 'straordOltre48'].forEach((k) => { if (form['mg_' + k].value === '15' || form['mg_' + k].value === '20') form['mg_' + k].value = '30'; }); } $$('[data-noncomm]', sh).forEach((d) => (d.style.display = v === 'commercio' ? 'none' : '')); $('[data-chiamata]', sh).style.display = form.tipo.value === 'chiamata' ? '' : 'none'; $('[data-fine]', sh).style.display = form.fine.value ? '' : 'none'; };
   ['ccnl', 'tipo', 'fine'].forEach((n) => form[n].addEventListener('change', sync)); form.fine.addEventListener('input', sync); sync();
   sh.addEventListener('click', async (e) => {
     if (e.target.closest('[data-x="cancel"]')) closeSheet();
@@ -1296,8 +1311,9 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
     const rec = pref.id ? job(pref.id) : { id: uid(), documenti: [] };
     rec.azienda = fd.get('azienda').trim(); rec.ruolo = fd.get('ruolo').trim(); rec.sede = fd.get('sede').trim();
     rec.tipo = fd.get('tipo'); rec.inizio = fd.get('inizio'); rec.fine = fd.get('fine') || null; rec.motivoFine = rec.fine ? fd.get('motivoFine') || null : null; rec.ccnl = fd.get('ccnl');
-    rec.livello = rec.ccnl === 'altro' ? fd.get('livelloAltro') : fd.get('lv_' + rec.ccnl);
-    rec.ccnlNome = fd.get('ccnlNome'); rec.minimoManuale = rec.ccnl === 'altro' ? toNum(fd.get('minimoManuale')) : null;
+    const libero = ['altro', 'cinema'].includes(rec.ccnl);
+    rec.livello = libero ? fd.get('livelloAltro') : fd.get('lv_' + rec.ccnl);
+    rec.ccnlNome = rec.ccnl === 'cinema' ? 'Esercizi cinematografici' : fd.get('ccnlNome'); rec.minimoManuale = libero ? toNum(fd.get('minimoManuale')) : null;
     rec.mensilita = Number(fd.get('mensilita')); rec.divisoreOrario = toNum(fd.get('divisoreOrario'));
     rec.oreSett = toNum(fd.get('oreSett')) || 40; rec.oreSettFull = toNum(fd.get('oreSettFull')) || 40; rec.giorniSett = toNum(fd.get('giorniSett')) || 5;
     rec.superminimo = toNum(fd.get('superminimo')) || 0; rec.scatti = toNum(fd.get('scatti')) || 0; rec.scattoImporto = toNum(fd.get('scattoImporto'));
@@ -1305,7 +1321,7 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
     rec.oltre15 = !!fd.get('oltre15'); rec.domenicaRiposo = !!fd.get('domenicaRiposo'); rec.mansioni = (fd.get('mansioni') || '').trim();
     const mg = {}; Object.keys(E.CCNL.commercio.magg).forEach((k) => { const v = toNum(fd.get('mg_' + k)); if (v != null && v !== E.CCNL.commercio.magg[k]) mg[k] = v; }); rec.magg = mg;
     rec.resFerie = toNum(fd.get('resFerie')); rec.resPermessi = toNum(fd.get('resPermessi')); rec.resData = fd.get('resData') || null; rec.note = fd.get('note') || '';
-    if (rec.ccnl === 'altro' && !rec.minimoManuale) { toast('Per un altro contratto indica il minimo mensile (lo trovi in busta)'); return; }
+    if (libero && !rec.minimoManuale) { toast('Indica il minimo mensile a tempo pieno (lo trovi in busta: paga base + contingenza)'); return; }
     if (rec.fine && rec.inizio && rec.fine < rec.inizio) { toast('La data di fine è prima dell’inizio'); return; }
     if (pref._doc) { rec.documenti = rec.documenti || []; rec.documenti.push(pref._doc); }
     if (!pref.id) { S.lavori.push(rec); const cur = job(S.attivo); if (!cur || (corrente(rec) && !corrente(cur))) S.attivo = rec.id; }

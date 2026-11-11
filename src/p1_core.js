@@ -41,7 +41,7 @@ const TIPI = { indeterminato: 'Tempo indeterminato', determinato: 'Tempo determi
 const TIPI_EN = { indeterminato: 'Permanent', determinato: 'Fixed-term', apprendistato: 'Apprenticeship', chiamata: 'On-call', stagionale: 'Seasonal', somministrazione: 'Agency', altro: '' };
 const MOTIVI = { scadenza: 'Scadenza del contratto', licenziamento: 'Licenziamento', consensuale: 'Risoluzione consensuale (in conciliazione)', giustacausa: 'Dimissioni per giusta causa', dimissioni: 'Dimissioni volontarie', altro: 'Altro' };
 const CAT_DOC = { contratto: 'Contratto', proroga: 'Proroga / trasformazione', lettera: 'Lettera / comunicazione', cu: 'Certificazione Unica', cessazione: 'Cessazione / dimissioni', altro: 'Altro' };
-const CCNL_NOMI = { commercio: 'Commercio – Terziario Confcommercio', turismo: E.TABELLE.turismo.nome, pubblici: E.TABELLE.pubblici.nome, multiservizi: E.TABELLE.multiservizi.nome, altro: 'Altro contratto (es. cinema)' };
+const CCNL_NOMI = { commercio: 'Commercio – Terziario Confcommercio', turismo: E.TABELLE.turismo.nome, pubblici: E.TABELLE.pubblici.nome, multiservizi: E.TABELLE.multiservizi.nome, cinema: 'Esercizi cinematografici (cinema)', altro: 'Altro contratto' };
 function livelliDi(ccnl) {
   if (ccnl === 'commercio') return Object.entries(E.COMMERCIO_LIVELLI).map(([k, v]) => [k, v.label, v.t2611]);
   if (E.TABELLE[ccnl]) return Object.entries(E.TABELLE[ccnl].livelli).map(([k, v]) => [k, v[0], v[1]]);

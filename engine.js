@@ -96,11 +96,13 @@
       scattoImporto = Number(job.scattoImporto) || 0;
       aumentiFull = Number(job.aumentiRinnovo) || 0;
     } else {
+      const cine = tipoCcnl === 'cinema';
       minimoFull = Number(job.minimoManuale) || 0;
       aumentiFull = Number(job.aumentiRinnovo) || 0;
-      mensilita = Number(job.mensilita) || 13;
-      divOrario = Number(job.divisoreOrario) || Math.round(oreFull * 4.2);
-      magg = Object.assign({}, CCNL.commercio.magg, job.magg || {});
+      mensilita = Number(job.mensilita) || (cine ? 14 : 13);
+      divOrario = Number(job.divisoreOrario) || (cine ? 173 : Math.round(oreFull * 4.2));
+      // CCNL Esercizi cinematografici: straordinario +30%
+      magg = Object.assign({}, CCNL.commercio.magg, cine ? { straord48: 30, straordOltre48: 30 } : {}, job.magg || {});
       scattoImporto = Number(job.scattoImporto) || 0;
     }
     const scatti = (Number(job.scatti) || 0) * scattoImporto;
@@ -433,6 +435,7 @@
       const anni = (new Date(oggiISO) - new Date(job.inizio)) / (365.25 * 864e5);
       fattore = anni < 2 ? 0 : anni < 4 ? 0.5 : 1;
     }
+    if (job.ccnl === 'cinema') return { ferieGiorni: 26, rolOre: 44 * p, exFestOre: 0 }; // 44 ore annue di riduzione d'orario
     return { ferieGiorni: 26, rolOre: rolPieno * fattore * p, exFestOre: 32 * p };
   }
 

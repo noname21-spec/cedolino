@@ -144,8 +144,8 @@ function controlla(b) {
   }
   if (b.lordo && b.contributi) {
     const base = b.imponibilePrev || b.lordo; const atteso = base * cr / 100; const diff = b.contributi - atteso;
-    if (Math.abs(diff) > Math.max(3, atteso * 0.06)) out.push({ s: 'warn', t: `Contributi INPS diversi dal ${num(cr, 2)}%`, p: `Su ${eur(base)} ci si aspetta circa ${eur(atteso)}, in busta ${eur(b.contributi)}. Se ci sono rimborsi o voci non soggette a contributi è normale; altrimenti chiedi spiegazioni.` });
-    else out.push({ s: 'ok', t: 'Contributi INPS corretti', p: `${eur(b.contributi)}, circa il ${num(cr, 2)}% dell'imponibile.` });
+    if (Math.abs(diff) > Math.max(3, atteso * 0.06)) out.push({ s: 'warn', t: `Contributi diversi dal ${num(cr, 2)}%`, p: `Su ${eur(base)} ci si aspetta circa ${eur(atteso)}, in busta ${eur(b.contributi)}. Se ci sono rimborsi o voci non soggette a contributi è normale; altrimenti chiedi spiegazioni.` });
+    else out.push({ s: 'ok', t: `Contributi ${/fpls|enpals/i.test(b.testo || '') ? 'FPLS (ex ENPALS)' : 'INPS'} corretti`, p: `${eur(b.contributi)}, circa il ${num(cr, 2)}% dell'imponibile.` });
   }
   if (b.lordo && b.netto && st) {
     const red25 = toNum(P.reddito2025);
@@ -280,14 +280,19 @@ const GLOSSARIO = [
     ['Superminimo', /superminimo|super\s*min/i, 'Una parte in più rispetto al minimo del CCNL concordata con l’azienda. Può essere "assorbibile" dagli aumenti futuri.'],
     ['Scatti di anzianità', /scatt/i, 'Aumenti che maturano ogni 3 anni nella stessa azienda (nel Commercio fino a 10 scatti).'],
     ['Lavoro supplementare', /supplement/i, 'Ore in più rispetto all’orario del part-time, fino all’orario pieno. Nel CCNL Commercio sono pagate con il 35% in più.'],
-    ['Straordinario', /straordin/i, 'Ore oltre le 40 settimanali: +15% fino alla 48ª ora, +20% oltre; straordinario notturno +50%.'],
+    ['Straordinario', /straordin/i, 'Ore oltre le 40 settimanali. Nel commercio +15% fino alla 48ª ora e +20% oltre (notturno +50%); nel CCNL dei cinema +30%.'],
     ['Lavoro festivo / domenicale', /festiv|domenic/i, 'Ore lavorate nei festivi o di domenica: nel Commercio +30%. Nel 2026 queste maggiorazioni sono tassate al 15% fino a 1.500 € se il reddito 2025 non supera 40.000 €.'],
     ['Festività non goduta', /fest.*(non\s*god|cadent)/i, 'Quando una festività cade di domenica o nel giorno di riposo spetta una giornata di paga in più.'],
     ['Tredicesima / Quattordicesima', /13\s*\^?|14\s*\^?|tredicesima|quattordicesima|mensilit/i, 'Mensilità aggiuntive: la 13ª a dicembre, la 14ª a giugno/luglio. Si maturano 1/12 per ogni mese lavorato.'],
     ['Indennità di disponibilità', /disponibilit/i, 'Nel lavoro a chiamata con obbligo di rispondere spetta un’indennità pari al 20% della retribuzione per i periodi in cui resti a disposizione.'],
   ]],
   ['Trattenute', [
-    ['Contributi INPS (IVS)', /i\.?v\.?s|inps|contribut/i, 'Contributi per la pensione a tuo carico: in genere il 9,19% dell’imponibile.'],
+    ['Contributi INPS (IVS)', /i\.?v\.?s|inps|contribut/i, 'Contributi per la pensione a tuo carico: in genere il 9,19% dell’imponibile. Possono esserci piccole quote in più (es. CIGS o FIS): la somma resta intorno al 9,2–9,5%.'],
+    ['Contributi FPLS (ex ENPALS)', /f\.?p\.?l\.?s|enpals/i, 'Nel cinema e nello spettacolo i contributi per la pensione vanno al Fondo pensioni lavoratori dello spettacolo dell’INPS (l’ex ENPALS). La quota a tuo carico è la stessa, il 9,19%: il resto lo paga il datore di lavoro.'],
+    ['Indennità di cassa', /indennit[aà]\s*(?:di\s*)?cassa|maneggio\s*denaro/i, 'Un piccolo importo fisso per chi lavora alla cassa e maneggia denaro (es. biglietteria del cinema, casse dei negozi).'],
+    ['Maggiorazione serale / notturna', /seral|nottur/i, 'Un’aggiunta alla paga oraria per le ore lavorate la sera o di notte, tipica di cinema, ristoranti ed eventi. Nel 2026 le maggiorazioni per lavoro notturno sono tassate al 15% (fino a 1.500 €) se il reddito 2025 non supera 40.000 €.'],
+    ['Welfare', /welfare/i, 'Una parte di quanto ti spetta data in beni e servizi (buoni, rimborsi) invece che in denaro: di solito non è tassata.'],
+    ['Permessi per riduzione d’orario', /riduz\w*\s*(?:d['’]?\s*)?orario/i, 'Ore di permesso retribuito. Nel CCNL dei cinema sono 44 all’anno (in proporzione se sei part-time).'],
     ['IRPEF lorda e netta', /irpef/i, 'L’imposta sul reddito: 23% fino a 28.000 €, 33% fino a 50.000 €, 43% oltre. Si riduce con le detrazioni: quella trattenuta è l’IRPEF netta.'],
     ['Detrazioni lavoro dipendente', /detraz/i, 'Sconto sull’IRPEF per chi lavora come dipendente; più il reddito è basso, più è alto (fino a 1.955 € l’anno).'],
     ['Addizionale regionale', /add.*reg/i, 'Imposta della regione sul reddito dell’anno prima, trattenuta in 11 rate da gennaio a novembre.'],

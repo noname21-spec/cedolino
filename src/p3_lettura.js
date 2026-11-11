@@ -58,7 +58,7 @@ function cercaEtichetta(L, found, key, re, opts = {}) {
     const line = L[i]; const m = line.match(re); if (!m) continue;
     if (opts.not && opts.not.test(line)) continue;
     let vals = importiIn(line.slice(m.index + m[0].length));
-    if (!vals.length && L[i + 1]) vals = importiIn(L[i + 1]);
+    if (!vals.length && L[i + 1] && !opts.sameLine) vals = importiIn(L[i + 1]);
     if (vals.length) { found[key] = opts.last ? vals[vals.length - 1] : vals[0]; return; }
   }
 }
@@ -121,9 +121,9 @@ function parseBusta(text) {
     netto: [/netto\s*(?:del\s*mese|in\s*busta|a\s*pagare|busta|da\s*pagare|mese|corrisposto|retribuzione|a\s*liquidare)|\bnetto\b/i, /imponib|lordo|progress/i],
     lordo: [/totale\s*competenze|tot\.?\s*competenze|totale\s*lordo|lordo\s*(?:mensile|del\s*mese)|competenze\s*lorde|retribuzione\s*lorda|totale\s*retribuzione|totale\s*compensi/i, /progress/i],
     trattenute: [/totale\s*trattenute|tot\.?\s*trattenute|totale\s*ritenute|tot\.?\s*ritenute/i, /progress/i],
-    imponibilePrev: [/imponibile\s*(?:inps|previd|contrib|i\.?n\.?p\.?s)|imp\.?\s*(?:inps|prev)/i, /progress/i],
+    imponibilePrev: [/imponibile\s*(?:inps|previd|contrib|i\.?n\.?p\.?s|f\.?p\.?l\.?s|ex[\s-]*enpals|enpals)|imp\.?\s*(?:inps|prev|fpls|enpals)/i, /progress/i],
     imponibileFisc: [/imponibile\s*(?:irpef|fiscale)|imp\.?\s*(?:irpef|fisc)/i, /progress/i],
-    contributi: [/(?:contribut[oi]|ritenut[ae])\s*(?:inps|ivs|previd|c\/dip)|contr\.?\s*ivs|c\.?\s*i\.?v\.?s|\bivs\b|inps\s*c\/dip|ritenute\s*previdenziali|tot\.?\s*contributi/i, /imponib|progress/i],
+    contributi: [/(?:contribut[oi]|ritenut[ae])\s*(?:inps|ivs|previd|c\/dip|f\.?p\.?l\.?s|ex[\s-]*enpals|enpals|aggiuntiv|fis\b|f\.i\.s|cigs|pension)|contr\.?\s*(?:ivs|fpls|enpals)|c\.?\s*i\.?v\.?s|\bivs\b|\bf\.?p\.?l\.?s\.?\b|ex[\s-]*enpals|inps\s*c\/dip|ritenute\s*previdenziali|tot\.?\s*contributi|\bcontribut[oi]\b/i, /imponib|progress|sindac|welfare|datore|ditta|azienda|ente\s*bil|fondo\s*(?:est|sanit)/i],
     irpef: [/irpef\s*(?:netta|trattenut|mese|a\s*debito|pagata|dovuta)|ritenut[ae]\s*(?:fiscal[ie]\s*)?irpef|ritenut[ae]\s*fiscal[ie]|\birpef\b(?!\s*(?:lorda|imponib|teorica|progress))/i, /imponib|imp\.\s*$|lorda|progress|detraz/i],
     addReg: [/add(?:izionale|\.|\s)*\s*reg/i, /imponib|progress/i],
     addCom: [/add(?:izionale|\.|\s)*\s*com/i, /imponib|progress/i],
@@ -135,6 +135,7 @@ function parseBusta(text) {
   if (lay) {
     const rows = righeLayout(lay);
     const colTratt = colonna(rows, /^trattenute$|\btrattenute\b(?!\s*:)/i);
+    const righeContr = new Map();
     const colOre = colonna(rows, /ore\s*\/\s*g+|^ore$|quantit[aà]|\bq\.?t[aà]\b|\bn\.?\s*ore/i);
     for (const [k, [re, not]] of Object.entries(RE)) {
       if (found[k] != null) continue;
@@ -143,19 +144,21 @@ function parseBusta(text) {
         const c = candidati(rows, lab);
         if (['contributi', 'irpef', 'addReg', 'addCom'].includes(k) && c.destra.length) {
           const inCol = colTratt && colTratt.p === lab.r.p && nellaColonna(lab.r, colTratt);
-          if (inCol) vals.push(valImp(inCol.s));
-          vals.push(c.destra[c.destra.length - 1].v, ...c.lista);
+          const scelto = inCol ? valImp(inCol.s) : c.destra[c.destra.length - 1].v;
+          if (k === 'contributi' && !/tot/i.test(lab.r.str) && !righeContr.has(lab.r)) { righeContr.set(lab.r, scelto); }
+          vals.push(scelto, ...c.lista);
         } else if (k === 'oreExtra') {
           const inCol = colOre && colOre.p === lab.r.p && nellaColonna(lab.r, colOre);
           if (inCol) vals.push(valImp(inCol.s)); else vals.push(...c.lista);
         } else vals.push(...c.lista);
       }
+      if (k === 'contributi' && righeContr.size > 1) vals.unshift([...righeContr.values()].reduce((s, v) => s + v, 0));
       if (vals.length) C[k] = [...new Set(vals)];
     }
     // tabella ferie/permessi: riga × colonna "Saldo/Residuo"
-    const colSaldo = colonna(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno\s*prec)|spettant|da\s*godere|disponibil/i);
+    const colSaldo = (() => { const ls = trovaEtichette(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno)(?!\s*prec)|spettant|da\s*godere|disponibil/i).filter((l) => !/prec|a\.\s*p|anno\s*prec/i.test(l.r.str.slice(l.its[0].o, l.its[l.its.length - 1].o + l.its[l.its.length - 1].s.length + 8))); if (!ls.length) return null; const l = ls.sort((a, b) => b.x1 - a.x1)[0]; return { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y }; })();
     const tab = (re) => {
-      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur/i).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
+      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur|non\s*god|liquid|indennit|\bratei\b|monetizz/i).filter((l) => !/non\s*god|liquid|indennit|\bratei\b|monetizz/i.test(l.r.str)).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
       for (const lab of labs) { const its = importiRiga(lab.r).filter((it) => it.x >= lab.x1 - 2); if (!its.length) continue; const it = colSaldo && colSaldo.p === lab.r.p ? nellaColonna(lab.r, colSaldo) || its[its.length - 1] : its[its.length - 1]; tot = (tot || 0) + valImp(it.s); }
       return tot;
     };
@@ -169,11 +172,12 @@ function parseBusta(text) {
     sp.sort((a, b) => a[0] - b[0] || b[1] - a[1]); const out = []; let end = -1; sp.forEach((s) => { if (s[0] >= end) { out.push(s[0]); end = s[1]; } }); return out; };
   for (const [k, [re, not]] of Object.entries(RE)) {
     if (found[k] != null) continue;
-    const vals = C[k] ? [...C[k]] : [];
+    const vals = C[k] ? [...C[k]] : []; const somma = [];
     for (let i = 0; i < L.length; i++) {
       const line = L[i]; const m = line.match(re); if (!m || (not && not.test(line.slice(Math.max(0, m.index - 7), m.index + m[0].length)))) continue;
       let after = importiIn(line.slice(m.index + m[0].length));
       if (['contributi', 'irpef', 'addReg', 'addCom'].includes(k) && after.length > 1) after = [after[after.length - 1], ...after];
+      if (k === 'contributi' && after.length && !/tot/i.test(line)) somma.push(after[0]);
       vals.push(...after);
       if (!after.length && L[i + 1]) {
         const sotto = importiIn(L[i + 1]); const pos = testate(line);
@@ -183,6 +187,7 @@ function parseBusta(text) {
         vals.push(...sotto);
       }
     }
+    if (k === 'contributi' && somma.length > 1 && !(C[k] && C[k].length)) vals.unshift(somma.reduce((s, v) => s + v, 0));
     if (vals.length) C[k] = [...new Set(vals)];
   }
   // scelgo i valori che "tornano": netto = lordo − trattenute (± arrotondamento)
@@ -202,13 +207,17 @@ function parseBusta(text) {
   pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
   pick('oreExtra', (v) => v > 0 && v <= 120);
   // ferie e permessi senza posizioni: ultimo numero della riga
-  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b/i, { last: true, not: /god(?:ute)?\s*$/i });
-  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true });
+  const nonSaldo = /non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i;
+  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b(?!\s*\/\s*permess)/i, { last: true, sameLine: true, not: nonSaldo });
+  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true, sameLine: true, not: /ferie\s*\/\s*permess|non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i });
   const mesiRe = new RegExp(`\\b(${MESI.join('|')})\\s*[-/]?\\s*(20\\d{2})`, 'i');
   const pm = text.match(mesiRe);
   if (pm) found.ym = `${pm[2]}-${pad(MESI.indexOf(pm[1].toLowerCase()) + 1)}`;
   else { const n = text.match(/\b(0?[1-9]|1[0-2])\s*[/-]\s*(20\d{2})\b/); if (n) found.ym = `${n[2]}-${pad(n[1])}`; }
-  if (/tredicesima|13\s*\^?\s*mens/i.test(text)) found.tipo = 'tredicesima'; else if (/quattordicesima|14\s*\^?\s*mens/i.test(text)) found.tipo = 'quattordicesima';
+  // busta solo di 13ª/14ª (non una busta mensile che contiene anche la 13ª)
+  const ordinaria = /paga\s*base|retribuzione\s*(?:ordinaria|mensile)|\bretribuzione\b\s+\d|ore\s*ordinarie|minimo\s*(?:tab|contr)|contingenza|stipendio/i.test(text);
+  if (!ordinaria && /tredicesima|13\s*\^?\s*mens|gratifica\s*natalizia/i.test(text)) found.tipo = 'tredicesima';
+  else if (!ordinaria && /quattordicesima|14\s*\^?\s*mens|premio\s*annuale/i.test(text)) found.tipo = 'quattordicesima';
   const jl = S.lavori.find((j) => j.azienda && text.toLowerCase().includes(j.azienda.toLowerCase().split(/\s+/)[0]));
   if (jl) found.jobId = jl.id;
   Object.keys(found).forEach((k) => { if (typeof found[k] === 'number') found[k] = Math.round(found[k] * 100) / 100; });
@@ -235,7 +244,7 @@ function parseContratto(raw) {
   else if (/turismo|alberghi|federalberghi/i.test(flat)) f.ccnl = 'turismo';
   else if (/multiservizi|imprese\s*di\s*pulizia|servizi\s*di\s*pulizia/i.test(flat)) f.ccnl = 'multiservizi';
   else if (/terziario|distribuzione\s*e\s*(?:dei\s*)?servizi|commercio|confcommercio|confesercenti/i.test(flat)) f.ccnl = 'commercio';
-  else if (/cinematograf|cinema/i.test(flat)) { f.ccnl = 'altro'; f.ccnlNome = 'Esercizi cinematografici'; }
+  else if (/cinematograf|cinema|multisala|anec\b/i.test(flat)) f.ccnl = 'cinema';
   // tipo di contratto
   if (/intermittente|a\s*chiamata|job\s*on\s*call/i.test(flat)) f.tipo = 'chiamata';
   else if (/apprendistato/i.test(flat)) f.tipo = 'apprendistato';
