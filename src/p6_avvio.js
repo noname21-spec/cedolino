@@ -225,9 +225,8 @@ const actions = {
         if (a === 'turno-oggi') { if (!S.lavori.length) return actions['job-new'](); turniYM = curYM(); location.hash = '#turni'; setTimeout(() => giornoSheet(todayISO()), 60); return; }
         if (a === 'import-turni') { if (!S.lavori.length) return actions['job-new'](); location.hash = '#turni'; setTimeout(importaTurni, 60); return; }
         if (a === 'doc-any') {
-          if (!S.lavori.length) return actions['job-new'](); if (S.lavori.length === 1) return addDocs(S.lavori[0].id);
-          const s2 = openSheet(`<h3>Di quale lavoro?</h3><p class="lead">Scegli il datore di lavoro del documento.</p>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`);
-          s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; closeSheet(); location.hash = '#lavoro-' + x.dataset.j; setTimeout(() => addDocs(x.dataset.j), 80); }); return;
+          const s2 = openSheet(`<h3>Di quale lavoro?</h3><p class="lead">Se è il contratto di un lavoro nuovo, compilo io la scheda.</p><button class="action" data-j="nuovo"><span class="ic" style="background:var(--accent-soft);color:var(--accent)">${ic.plus}</span><span><b>Un lavoro nuovo</b><small>Leggo il contratto e creo il lavoro</small></span></button>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`);
+          s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; const id = x.dataset.j; if (id === 'nuovo') { pickFile('application/pdf,image/*').then((fs) => { closeSheet(); if (fs[0]) setTimeout(() => nuovoLavoroDaContratto(fs[0]), 230); }); return; } pickFile('application/pdf,image/*', true).then((fs) => { closeSheet(); if (!fs.length) return; location.hash = '#lavoro-' + id; setTimeout(() => addDocs(id, fs), 120); }); }); return;
         }
         actions[a] && actions[a]();
       }, 230);
@@ -274,7 +273,7 @@ const actions = {
   'ob-next'() { obSalva(); obStep = Math.min(4, obStep + 1); render(); scrollTo(0, 0); },
   'ob-back'() { obSalva(); obStep = Math.max(0, obStep - 1); render(); },
   'ob-skip'() { S.onboarded = true; save(); location.hash = '#home'; },
-  'ob-job'(el) { obSalva(); const done = () => { obStep = 3; location.hash = '#benvenuto'; render(); }; if (el.dataset.m === 'pdf') { jobForm({}, null, done); setTimeout(() => { const b = $('[data-x="leggi"]'); if (b) b.click(); }, 300); } else jobForm({}, null, done); },
+  'ob-job'(el) { obSalva(); const done = () => { obStep = 3; location.hash = '#benvenuto'; render(); }; if (el.dataset.m === 'pdf') pickFile('application/pdf,image/*').then((fs) => { if (fs[0]) nuovoLavoroDaContratto(fs[0], done); }); else jobForm({}, null, done); },
   'ob-fine'(el) { S.onboarded = true; save(); const g = el.dataset.go2; obStep = 0; if (g.startsWith('#')) location.hash = g; else { location.hash = '#home'; setTimeout(() => actions[g](), 120); } },
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },

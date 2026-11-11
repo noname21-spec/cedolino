@@ -269,17 +269,61 @@ function viewLavoro(id) {
   return h;
 }
 
+/* ---- Lettura dei contratti ---- */
+async function leggiContrattoFile(file, onProg) {
+  let testo = ''; try { testo = await leggiFile(file, onProg); } catch (e) {}
+  const ex = testo ? parseContratto(testo) : {};
+  const fid = uid(); await filePut(fid, file, { name: file.name, type: file.type });
+  const categoria = /proroga|prorogat/i.test(testo) ? 'proroga' : /certificazione\s*unica/i.test(testo) ? 'cu' : 'contratto';
+  return { ex, testo, letto: testo.replace(/\s/g, '').length > 40, doc: { id: uid(), fileId: fid, nome: file.name.replace(/\.[a-z0-9]+$/i, ''), categoria, data: ex.inizio || todayISO() } };
+}
+function sheetLettura(nome) {
+  const sh = openSheet(`<h3>Leggo il contratto…</h3><p class="lead">${esc(nome)}</p><div style="text-align:center;padding:12px"><span class="spin"></span></div><p class="small muted" id="prog" style="text-align:center;margin:0"></p>`);
+  return (x, label) => { const el = $('#prog', sh); if (el) el.textContent = `${label ? label + ' · ' : ''}${Math.round((x || 0) * 100)}%`; };
+}
+async function nuovoLavoroDaContratto(file, onSaved, base = {}) {
+  if (!file) return;
+  const prog = sheetLettura(file.name);
+  const r = await leggiContrattoFile(file, prog);
+  closeSheet();
+  const extra = { _doc: r.doc, _letto: r.letto }; if (r.ex.fine && !base.motivoFine && r.ex.tipo !== 'indeterminato') extra.motivoFine = 'scadenza';
+  setTimeout(() => jobForm(Object.assign({}, base, r.ex, extra), r.ex, onSaved), 230);
+}
+const CAMPI_LAVORO = [['azienda', 'Azienda'], ['ruolo', 'Ruolo'], ['sede', 'Città'], ['tipo', 'Contratto', (v) => TIPI[v] || v], ['inizio', 'Inizio', dateLabel], ['fine', 'Fine', dateLabel], ['ccnl', 'CCNL', (v) => CCNL_NOMI[v] || v], ['livello', 'Livello', (v, ex, j) => livelloLabel({ ccnl: ex.ccnl || j.ccnl, livello: v })], ['oreSett', 'Ore a settimana', (v) => num(v)], ['superminimo', 'Superminimo', eur], ['disponibilita', 'Obbligo di disponibilità', (v) => (v ? 'sì' : 'no')]];
+/** Dopo aver caricato un documento in un lavoro: propongo di aggiornare i dati (es. proroga) */
+async function proponiAggiornamento(j, file, doc) {
+  let testo = ''; try { testo = await leggiFile(file); } catch (e) { return; }
+  if (!testo || testo.replace(/\s/g, '').length < 40) return;
+  if (/proroga|prorogat/i.test(testo)) doc.categoria = 'proroga'; else if (/certificazione\s*unica/i.test(testo)) { doc.categoria = 'cu'; save(); render(); return; }
+  const ex = parseContratto(testo); if (ex.inizio && doc.categoria !== 'proroga') doc.data = ex.inizio;
+  if (doc.categoria === 'proroga') { delete ex.inizio; delete ex.azienda; }
+  const diff = CAMPI_LAVORO.filter(([k]) => ex[k] != null && ex[k] !== '' && String(ex[k]) !== String(j[k] ?? ''));
+  save(); render();
+  if (!diff.length) { toast('Documento letto: i dati del lavoro sono già aggiornati'); return; }
+  const fmt = (c, v) => (v == null || v === '' ? '—' : c[2] ? c[2](v, ex, j) : String(v));
+  const sh = openSheet(`<h3>${doc.categoria === 'proroga' ? 'È una proroga' : 'Ho letto il documento'}</h3><p class="lead">Vuoi aggiornare ${esc(j.azienda)} con questi dati?</p>
+    <div class="list">${diff.map((c) => `<label class="li static check" style="padding:9px 0"><input type="checkbox" data-k="${c[0]}" ${c[0] === 'azienda' ? '' : 'checked'}><span class="switch"></span><span class="grow"><b>${c[1]}</b><span class="hint">${esc(fmt(c, j[c[0]]))} → <b style="color:var(--text)">${esc(fmt(c, ex[c[0]]))}</b></span></span></label>`).join('')}</div>
+    <div class="btns" style="margin-top:12px"><button class="btn ghost" data-x="no">Lascia com'è</button><button class="btn" data-x="ok">Aggiorna</button></div>`);
+  sh.addEventListener('click', (e) => {
+    const x = e.target.closest('[data-x]'); if (!x) return;
+    if (x.dataset.x === 'ok') { $$('input[data-k]', sh).forEach((c) => { if (c.checked) j[c.dataset.k] = ex[c.dataset.k]; }); if (j.fine && j.inizio && j.fine < j.inizio) j.fine = null; save(); render(); toast('Lavoro aggiornato'); }
+    closeSheet();
+  });
+}
+
 function jobForm(pref = {}, extracted = null, onSaved = null) {
   const j = Object.assign({ tipo: 'indeterminato', ccnl: 'commercio', livello: '4', oreSett: 40, oreSettFull: 40, giorniSett: 5, oltre15: true, domenicaRiposo: true, colore: COLORI[S.lavori.length % COLORI.length] }, pref);
   const ex = extracted || {}; const tag = (k) => (ex[k] != null ? ' <span class="badge ok">dal contratto</span>' : '');
   const M = Object.assign({}, E.CCNL.commercio.magg, j.magg || {});
   const lvSel = (ccnl) => `<select class="inp" name="lv_${ccnl}">${livelliDi(ccnl).map(([k, l, v]) => `<option value="${k}" ${String(j.livello) === k && (j.ccnl || 'commercio') === ccnl ? 'selected' : ''}>${l} · ${eur0(v)}</option>`).join('')}</select>`;
-  let h = `<h3>${pref.id ? 'Modifica lavoro' : 'Nuovo lavoro'}</h3><p class="lead">${extracted ? `Ho letto ${Object.keys(ex).length} dati dal contratto: controllali.` : 'Ti bastano i primi campi; il resto lo puoi aggiungere dopo.'}</p>
+  const nEx = Object.keys(ex).length;
+  let h = `<h3>${pref.id ? 'Modifica lavoro' : 'Nuovo lavoro'}</h3>${extracted ? (nEx ? `<p class="lead">Dal contratto ho compilato ${nEx} campi (con il segno <span class="badge ok">dal contratto</span>): controllali e completa il resto.</p>` : `<p class="banner">${pref._letto === false ? 'Non riesco a leggere il testo di questo file (forse è una foto poco nitida o una scansione): compila i campi a mano.' : 'Ho letto il contratto ma non ho trovato i dati principali: compila i campi a mano.'} Il documento resta comunque allegato al lavoro.</p>`) : '<p class="lead">Ti bastano i primi campi; il resto lo puoi aggiungere dopo.</p>'}
   ${!pref.id && !extracted ? `<button class="btn ghost block" style="margin-bottom:14px" data-x="leggi">${ic.upload} Compila dal contratto (PDF o foto)</button>` : ''}
   <form data-form="job">
   <div class="sec-title" style="margin-top:0">Il lavoro</div>
-  <label class="field"><span>Azienda / datore di lavoro</span><input class="inp" name="azienda" value="${esc(j.azienda || '')}" required placeholder="es. Negozio Rossi srl"></label>
-  <div class="fgrid"><label class="field"><span>Ruolo${tag('ruolo')}</span><input class="inp" name="ruolo" value="${esc(j.ruolo || '')}" placeholder="es. Addetto vendite"></label><label class="field"><span>Città</span><input class="inp" name="sede" value="${esc(j.sede || '')}"></label></div>
+  <label class="field"><span>Azienda / datore di lavoro${tag('azienda')}</span><input class="inp" name="azienda" value="${esc(j.azienda || '')}" required placeholder="es. Negozio Rossi srl"></label>
+  <label class="field"><span>Ruolo${tag('ruolo')}</span><input class="inp" name="ruolo" value="${esc(j.ruolo || '')}" placeholder="es. Addetto vendite"></label>
+  <label class="field"><span>Città${tag('sede')}</span><input class="inp" name="sede" value="${esc(j.sede || '')}" placeholder="Dove lavori"></label>
   <label class="field"><span>Tipo di contratto${tag('tipo')}</span><select class="inp" name="tipo">${Object.entries(TIPI).map(([k, v]) => `<option value="${k}" ${j.tipo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
   <div class="fgrid"><label class="field"><span>Inizio${tag('inizio')}</span><input class="inp" type="date" name="inizio" value="${j.inizio || ''}" required></label><label class="field"><span>Fine${tag('fine')}</span><input class="inp" type="date" name="fine" value="${j.fine || ''}"><span class="hint">Vuoto se non ha scadenza</span></label></div>
   <div data-fine><label class="field"><span>Come è finito / finirà</span><select class="inp" name="motivoFine"><option value="">—</option>${Object.entries(MOTIVI).map(([k, v]) => `<option value="${k}" ${j.motivoFine === k ? 'selected' : ''}>${v}</option>`).join('')}</select><span class="hint">Serve per capire se ti spetta la NASpI</span></label></div>
@@ -314,11 +358,8 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
     if (e.target.closest('[data-x="cancel"]')) closeSheet();
     const lb = e.target.closest('[data-x="leggi"]'); if (!lb) return;
     const file = (await pickFile('application/pdf,image/*'))[0]; if (!file) return;
-    lb.innerHTML = '<span class="spin"></span> Leggo il contratto…';
-    let ex2 = {}; try { ex2 = parseContratto(await leggiFile(file)); } catch (err) {}
-    const fid = uid(); await filePut(fid, file, { name: file.name, type: file.type });
-    const cur = Object.fromEntries(new FormData(form).entries()); delete cur.ccnl;
-    closeSheet(); setTimeout(() => jobForm(Object.assign({}, j, cur, ex2, { _doc: { id: uid(), fileId: fid, nome: file.name.replace(/\.[a-z0-9]+$/i, ''), categoria: 'contratto', data: ex2.inizio || todayISO() } }), ex2, onSaved), 230);
+    const cur = Object.fromEntries([...new FormData(form).entries()].filter(([, v]) => v !== '')); delete cur.ccnl;
+    closeSheet(); setTimeout(() => nuovoLavoroDaContratto(file, onSaved, Object.assign({}, j, cur)), 230);
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault(); const fd = new FormData(form);
@@ -351,7 +392,8 @@ async function addDocs(jobId, files) {
     const cat = /\bcu\b|certificaz/i.test(f.name) ? 'cu' : /proroga|trasform/i.test(f.name) ? 'proroga' : /dimiss|cessaz|licenz/i.test(f.name) ? 'cessazione' : /contratt|assunz/i.test(f.name) || !j.documenti.length ? 'contratto' : 'altro';
     j.documenti.push({ id: uid(), fileId: fid, nome: f.name.replace(/\.[a-z0-9]+$/i, ''), categoria: cat, data: todayISO() });
   }
-  save(); render(); toast(files.length === 1 ? 'Documento caricato' : `${files.length} documenti caricati`);
+  save(); render(); toast(files.length === 1 ? 'Documento caricato: lo leggo…' : `${files.length} documenti caricati`);
+  const f0 = files[0]; if (files.length === 1 && (f0.type === 'application/pdf' || /\.pdf$/i.test(f0.name) || f0.type.startsWith('image/'))) proponiAggiornamento(j, f0, j.documenti[j.documenti.length - 1]);
 }
 function docMenu(jobId, docId) {
   const j = job(jobId); const d = (j.documenti || []).find((x) => x.id === docId); if (!d) return;

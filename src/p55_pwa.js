@@ -73,9 +73,9 @@ async function gestisciCondivisi(files) {
   sh.addEventListener('click', (e) => {
     const b = e.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k; const fs = fileInArrivo; closeSheet();
     setTimeout(() => {
-      if (!S.lavori.length && k !== 'busta') { toast('Prima aggiungi il lavoro'); return actions['job-new'](); }
+      if (!S.lavori.length && !['busta', 'doc'].includes(k)) { toast('Prima aggiungi il lavoro'); return actions['job-new'](); }
       if (k === 'busta') caricaBusta(fs);
-      if (k === 'doc') { if (S.lavori.length === 1) { location.hash = '#lavoro-' + S.lavori[0].id; setTimeout(() => addDocs(S.lavori[0].id, fs), 80); return; } const s2 = openSheet(`<h3>Di quale lavoro?</h3>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`); s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; closeSheet(); location.hash = '#lavoro-' + x.dataset.j; setTimeout(() => addDocs(x.dataset.j, fs), 80); }); }
+      if (k === 'doc') { const s2 = openSheet(`<h3>Di quale lavoro?</h3><button class="action" data-j="nuovo"><span class="ic" style="background:var(--accent-soft);color:var(--accent)">${ic.plus}</span><span><b>Un lavoro nuovo</b><small>Leggo il contratto e creo il lavoro</small></span></button>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`); s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; closeSheet(); if (x.dataset.j === 'nuovo') { setTimeout(() => nuovoLavoroDaContratto(fs[0]), 230); return; } location.hash = '#lavoro-' + x.dataset.j; setTimeout(() => addDocs(x.dataset.j, fs), 80); }); }
       if (k === 'cu') caricaCU((attivo() || {}).id, new Date().getFullYear() - 1, fs[0]);
       if (k === 'planning') { location.hash = '#turni'; setTimeout(() => importaTurni(fs[0]), 80); }
     }, 230);

@@ -504,13 +504,32 @@ async function pdfText(blob) {
   }
   return lines.join('\n');
 }
-async function ocrText(blob, onProg) {
-  if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-  const r = await window.Tesseract.recognize(blob, 'ita', { logger: (m) => { if (m.status === 'recognizing text' && onProg) onProg(m.progress); } });
-  return r.data.text;
+let ocrWorkerP = null; let ocrProg = null;
+async function ocrWorker() {
+  if (!ocrWorkerP) ocrWorkerP = (async () => {
+    if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+    return window.Tesseract.createWorker('ita', 1, { logger: (m) => { if (m.status === 'recognizing text' && ocrProg) ocrProg(m.progress); } });
+  })().catch((e) => { ocrWorkerP = null; throw e; });
+  return ocrWorkerP;
+}
+async function ocrText(img, onProg) { const w = await ocrWorker(); ocrProg = onProg; try { const r = await w.recognize(img); return r.data.text; } finally { ocrProg = null; } }
+/** PDF scansionato (solo immagini): disegno le pagine e leggo il testo con l'OCR */
+async function pdfOCR(blob, onProg) {
+  const pdf = await pdfLib().getDocument({ data: await blob.arrayBuffer() }).promise; const n = Math.min(pdf.numPages, 4); let out = '';
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i); const vp = page.getViewport({ scale: 2.2 });
+    const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+    await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    out += (await ocrText(cv, (x) => onProg && onProg((i - 1 + x) / n, `Pagina ${i} di ${n}`))) + '\n';
+  }
+  return out;
 }
 async function leggiFile(file, onProg) {
-  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return pdfText(file);
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    const t = await pdfText(file);
+    if (t.replace(/\s/g, '').length >= 150) return t;
+    try { if (onProg) onProg(0, 'È una scansione: riconosco il testo…'); const o = await pdfOCR(file, onProg); return o.trim() ? o : t; } catch (e) { return t; }
+  }
   if (file.type.startsWith('image/')) return ocrText(file, onProg);
   if (file.type.startsWith('text/') || /\.(txt|csv|ics)$/i.test(file.name)) return file.text();
   return '';
@@ -566,24 +585,76 @@ function parseBusta(text) {
   found._appresi = appresi;
   return found;
 }
-function parseContratto(text) {
-  const f = {}; const romani = { I: '1', II: '2', III: '3', IV: '4', V: '5', VI: '6', VII: '7' };
-  if (/turismo|alberghi|federalberghi/i.test(text)) f.ccnl = 'turismo';
-  else if (/pubblici\s*esercizi|fipe|ristorazione/i.test(text)) f.ccnl = 'pubblici';
-  else if (/multiservizi|pulizi/i.test(text)) f.ccnl = 'multiservizi';
-  else if (/terziario|commercio|confcommercio/i.test(text)) f.ccnl = 'commercio';
-  let m = text.match(/\b(I{1,3}|IV|V|VI|VII|[1-7])\s*°?\s*(super\s*)?livello/i) || text.match(/livello\s*:?\s*(I{1,3}|IV|V|VI{0,2}|[1-7]|quadro)\b/i);
-  if (m) { const k = m[1].toUpperCase(); f.livello = k === 'QUADRO' ? 'Q' : romani[k] || k; if (m[2] && f.ccnl !== 'commercio') f.livello += 'S'; }
-  m = text.match(/(\d{1,2}(?:[.,]\d)?)\s*ore\s*(settimanali|a\s*settimana|sett)/i) || text.match(/orario[^.\n]{0,40}?(\d{1,2})\s*ore/i);
+const MESI_RE = MESI.join('|');
+const ORDINALI = { primo: '1', secondo: '2', terzo: '3', quarto: '4', quinto: '5', sesto: '6', settimo: '7' };
+/** Tutte le date nel testo (numeriche o "19 maggio 2026") con la loro posizione */
+function dateNelTesto(text) {
+  const out = []; let m;
+  const re1 = /\b(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})\b/g;
+  while ((m = re1.exec(text))) { const g = +m[1], mo = +m[2]; let y = +m[3]; if (y < 100) y += 2000; if (g >= 1 && g <= 31 && mo >= 1 && mo <= 12 && y >= 1950 && y <= 2100) out.push({ iso: `${y}-${pad(mo)}-${pad(g)}`, i: m.index }); }
+  const re2 = new RegExp(`\\b(\\d{1,2})\\s*[°ºo]?\\s*(?:di\\s+)?(${MESI_RE})\\s+(\\d{4})\\b`, 'gi');
+  while ((m = re2.exec(text))) out.push({ iso: `${m[3]}-${pad(MESI.indexOf(m[2].toLowerCase()) + 1)}-${pad(m[1])}`, i: m.index });
+  return out.sort((a, b) => a.i - b.i);
+}
+function parseContratto(raw) {
+  const f = {}; const text = String(raw || '').replace(/ /g, ' ').replace(/[ \t]+/g, ' ');
+  const flat = text.replace(/\s*\n\s*/g, ' ');
+  const romani = { I: '1', II: '2', III: '3', IV: '4', V: '5', VI: '6', VII: '7' };
+  // contratto collettivo
+  if (/pubblici\s*esercizi|fipe\b|ristorazione/i.test(flat)) f.ccnl = 'pubblici';
+  else if (/turismo|alberghi|federalberghi/i.test(flat)) f.ccnl = 'turismo';
+  else if (/multiservizi|imprese\s*di\s*pulizia|servizi\s*di\s*pulizia/i.test(flat)) f.ccnl = 'multiservizi';
+  else if (/terziario|distribuzione\s*e\s*(?:dei\s*)?servizi|commercio|confcommercio|confesercenti/i.test(flat)) f.ccnl = 'commercio';
+  else if (/cinematograf|cinema/i.test(flat)) { f.ccnl = 'altro'; f.ccnlNome = 'Esercizi cinematografici'; }
+  // tipo di contratto
+  if (/intermittente|a\s*chiamata|job\s*on\s*call/i.test(flat)) f.tipo = 'chiamata';
+  else if (/apprendistato/i.test(flat)) f.tipo = 'apprendistato';
+  else if (/somministrazione/i.test(flat)) f.tipo = 'somministrazione';
+  else if (/stagional/i.test(flat)) f.tipo = 'stagionale';
+  else if (/trasformazione[^.]{0,80}tempo\s*indeterminato/i.test(flat)) f.tipo = 'indeterminato';
+  else if (/tempo\s*determinato|a\s*termine/i.test(flat)) f.tipo = 'determinato';
+  else if (/tempo\s*indeterminato/i.test(flat)) f.tipo = 'indeterminato';
+  if (/proroga|prorogat/i.test(flat)) f._proroga = true;
+  // livello
+  let m = flat.match(/\b(I{1,3}|IV|VI{0,2}|V|[1-7])\s*(?:°|º|\^)?\s*(super\s*)?livell/i)
+    || flat.match(/livell[oi]\s*(?:di\s*inquadramento)?\s*:?\s*(I{1,3}|IV|VI{0,2}|V|[1-7])\s*(?:°|º)?\s*(super)?\b/i)
+    || flat.match(/\b(primo|secondo|terzo|quarto|quinto|sesto|settimo)\s*(super\s*)?livell/i)
+    || flat.match(/livello\s*(quadro)/i);
+  if (m) { const k = m[1]; let lv = ORDINALI[k.toLowerCase()] || romani[k.toUpperCase()] || (/quadro/i.test(k) ? 'Q' : k); if (m[2] && f.ccnl && f.ccnl !== 'commercio') lv += 'S'; f.livello = lv; }
+  // orario
+  m = flat.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*(?:ore|h)\s*(?:settimanali|a\s*settimana|alla\s*settimana|per\s*settimana|sett\.)/i)
+    || flat.match(/orario[^.;]{0,90}?\b(\d{1,2}(?:[.,]\d{1,2})?)\s*ore\b/i);
   if (m) f.oreSett = toNum(m[1]);
-  const d = '(\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{2,4})';
-  const toIso = (s) => { const [a, b, c] = s.split(/[/.-]/).map(Number); const y = c < 100 ? 2000 + c : c; return `${y}-${pad(b)}-${pad(a)}`; };
-  m = text.match(new RegExp(`(?:dal|decorrenza|a\\s*decorrere\\s*dal|data\\s*(?:di\\s*)?(?:assunzione|inizio))\\s*:?\\s*${d}`, 'i')); if (m) f.inizio = toIso(m[1]);
-  for (const mm of text.matchAll(new RegExp(`(?:\\bal|fino\\s*al|scadenza|termine)\\s*:?\\s*${d}`, 'gi'))) { const v = toIso(mm[1]); if ((!f.inizio || v > f.inizio) && (!f.fine || v > f.fine)) f.fine = v; }
-  if (/intermittente|a\s*chiamata/i.test(text)) f.tipo = 'chiamata'; else if (/apprendistato/i.test(text)) f.tipo = 'apprendistato'; else if (/tempo\s*determinato|a\s*termine/i.test(text)) f.tipo = 'determinato'; else if (/tempo\s*indeterminato/i.test(text)) f.tipo = 'indeterminato';
-  m = text.match(/superminimo[^\d\n]{0,30}(\d{1,3}(?:\.\d{3})*,\d{2})/i); if (m) f.superminimo = pnum(m[1]);
-  m = text.match(/mansion[ei][^:\n]{0,20}:?\s*([^\n.]{4,60})/i); if (m) f.ruolo = cap(m[1].trim().replace(/^di\s+/i, ''));
-  if (/obbligo\s*di\s*(risposta|disponibilit)|indennit[aà]\s*di\s*disponibilit/i.test(text)) f.disponibilita = true;
+  else if ((m = flat.match(/(?:part[\s-]?time|tempo\s*parziale)[^.;]{0,80}?(\d{2,3})\s*%/i) || flat.match(/(\d{2,3})\s*%\s*(?:dell['’]?\s*orario|del\s*tempo\s*pieno|dell['’]?\s*orario\s*(?:normale|contrattuale|a\s*tempo\s*pieno))/i))) f.oreSett = Math.round(40 * Number(m[1]) / 100 * 10) / 10;
+  else if (/tempo\s*pieno|full[\s-]?time/i.test(flat) && !/part[\s-]?time|tempo\s*parziale/i.test(flat)) f.oreSett = 40;
+  // date: guardo le parole che le precedono
+  const ctx = (d) => flat.slice(Math.max(0, d.i - 70), d.i).toLowerCase();
+  const date = dateNelTesto(flat).filter((d) => !/\bnat[oa]\b|nascita|rilasciat|emess|scadenza\s*(?:del\s*)?documento|(?:^|[\s,])l[iì]\s*,?\s*$|protocollo/.test(ctx(d).slice(-40)));
+  const kIni = /(?:\bdal|decorrenza(?:\s*dal)?|a\s*decorrere\s*dal|a\s*partire\s*dal|data\s*(?:di\s*)?(?:assunzione|inizio)[^0-9]{0,20}|assunt[oa][^.]{0,30}?\bil|inizio\s*(?:del\s*)?rapporto[^0-9]{0,20})\s*:?\s*$/;
+  const kFin = /(?:\bal|fino\s*al|sino\s*al|scadenza(?:\s*(?:il|al))?|termine(?:\s*(?:il|al))?|cessazione[^0-9]{0,20}|data\s*(?:di\s*)?(?:fine|termine|scadenza)[^0-9]{0,20}|prorogat[oa][^0-9]{0,30})\s*:?\s*$/;
+  for (const d of date) { const c = ctx(d); if (!f.inizio && kIni.test(c)) f.inizio = d.iso; else if (kFin.test(c) && (!f.inizio || d.iso > f.inizio) && (!f.fine || d.iso > f.fine)) f.fine = d.iso; }
+  if (!f.inizio && date.length) { const s = date.map((d) => d.iso).sort(); f.inizio = s[0]; if (!f.fine && f.tipo && f.tipo !== 'indeterminato' && s.length > 1 && s[s.length - 1] > s[0]) f.fine = s[s.length - 1]; }
+  if (f._proroga && f.inizio && !f.fine) { f.fine = f.inizio; delete f.inizio; }
+  if (f.tipo === 'indeterminato' && !f._proroga) delete f.fine;
+  // azienda (ragione sociale con forma giuridica)
+  const formaG = String.raw`(?:S\.?\s?p\.?\s?A\.?|S\.?\s?r\.?\s?l\.?(?:\s?s\.?)?|S\.?\s?n\.?\s?c\.?|S\.?\s?a\.?\s?s\.?|Soc(?:ietà)?\.?\s*Coop(?:erativa)?\.?(?:\s*a\s*r\.?\s*l\.?)?|Coop\.?|S\.?\s?c\.?\s?a\.?\s?r\.?\s?l\.?|Spa|Srl|SPA|SRL|SNC|SAS)`;
+  m = flat.match(new RegExp(String.raw`(?:societ[àa]|ditta|azienda|datore\s*di\s*lavoro|denominazione|ragione\s*sociale)\s*:?\s*["“]?([A-Z0-9][\w&'’.\- ]{1,50}?\s${formaG})(?=[\s,.;)"”]|$)`, 'i'))
+    || text.match(new RegExp(String.raw`(?:^|\n)\s*([A-Z0-9][\w&'’.\- ]{1,50}?\s${formaG})(?=[\s,.;)]|$)`, 'm'))
+    || flat.match(new RegExp(String.raw`\b([A-Z][A-Z0-9&'’.\- ]{1,40}?\s${formaG})(?=[\s,.;)]|$)`));
+  if (m) f.azienda = m[1].replace(/^(?:la|tra|fra)\s+/i, '').replace(/\s+/g, ' ').trim();
+  else if ((m = flat.match(/(?:datore\s*di\s*lavoro|società|azienda)\s*:\s*([A-Z][^,;\n(]{2,50})/))) f.azienda = m[1].trim();
+  // mansione / qualifica
+  m = flat.match(/(?:con\s*(?:la\s*)?qualifica\s*(?:professionale\s*)?(?:di|:)|con\s*(?:le\s*)?mansioni\s*(?:di|:)|in\s*qualit[àa]\s*di|mansione\s*:|qualifica\s*:|profilo\s*(?:professionale)?\s*(?:di|:))\s*["“]?([A-Za-zÀ-ù'’ \/-]{3,45}?)["”]?(?=[,.;:(\n]|\s+(?:e|ed|con|presso|livello|inquadrat|che|per|a\s*tempo|part)\b|$)/i);
+  if (m && !/seguent|indicat|previst|descritt/i.test(m[1])) f.ruolo = cap(m[1].trim().replace(/^(?:di|un|una|addett[oa] a)\s+(?=\S)/i, (x) => (/addett/i.test(x) ? x : '')).trim());
+  // sede di lavoro
+  m = flat.match(/(?:sede\s*di\s*lavoro|luogo\s*di\s*lavoro|luogo\s*della\s*prestazione)\s*:?\s*(?:presso\s*)?(?:il\s*|la\s*|l['’])?([A-Z][A-Za-zÀ-ù'’ ]{2,40}?)(?=[,.;(\n]|\s+(?:via|piazza|viale|corso|presso|centro|c\/o)\b|$)/i)
+    || flat.match(/presso\s*(?:il\s*punto\s*vendita|la\s*(?:nostra\s*)?(?:sede|filiale)|l['’]\s*unit[àa]\s*(?:produttiva|locale)|il\s*negozio|lo\s*stabilimento)\s*(?:di|sit[oa]\s*(?:in|a))\s*([A-Z][A-Za-zÀ-ù'’ ]{2,40}?)(?=[,.;(\n]|\s+(?:via|piazza|viale|corso|presso|centro|c\/o)\b|$)/i);
+  if (m) f.sede = m[1].trim();
+  // altro
+  m = flat.match(/superminimo[^\d\n]{0,40}(\d{1,3}(?:\.\d{3})*,\d{2})/i); if (m) f.superminimo = pnum(m[1]);
+  if (/obbligo\s*di\s*(?:risposta|disponibilit)|indennit[aà]\s*di\s*disponibilit/i.test(flat)) f.disponibilita = true;
+  if (f.ccnl === 'altro' && (m = flat.match(/retribuzione[^.]{0,80}?(?:€|euro)\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i))) f.minimoManuale = pnum(m[1]);
+  delete f._proroga;
   return f;
 }
 function parseCU(text) {
@@ -986,17 +1057,61 @@ function viewLavoro(id) {
   return h;
 }
 
+/* ---- Lettura dei contratti ---- */
+async function leggiContrattoFile(file, onProg) {
+  let testo = ''; try { testo = await leggiFile(file, onProg); } catch (e) {}
+  const ex = testo ? parseContratto(testo) : {};
+  const fid = uid(); await filePut(fid, file, { name: file.name, type: file.type });
+  const categoria = /proroga|prorogat/i.test(testo) ? 'proroga' : /certificazione\s*unica/i.test(testo) ? 'cu' : 'contratto';
+  return { ex, testo, letto: testo.replace(/\s/g, '').length > 40, doc: { id: uid(), fileId: fid, nome: file.name.replace(/\.[a-z0-9]+$/i, ''), categoria, data: ex.inizio || todayISO() } };
+}
+function sheetLettura(nome) {
+  const sh = openSheet(`<h3>Leggo il contratto…</h3><p class="lead">${esc(nome)}</p><div style="text-align:center;padding:12px"><span class="spin"></span></div><p class="small muted" id="prog" style="text-align:center;margin:0"></p>`);
+  return (x, label) => { const el = $('#prog', sh); if (el) el.textContent = `${label ? label + ' · ' : ''}${Math.round((x || 0) * 100)}%`; };
+}
+async function nuovoLavoroDaContratto(file, onSaved, base = {}) {
+  if (!file) return;
+  const prog = sheetLettura(file.name);
+  const r = await leggiContrattoFile(file, prog);
+  closeSheet();
+  const extra = { _doc: r.doc, _letto: r.letto }; if (r.ex.fine && !base.motivoFine && r.ex.tipo !== 'indeterminato') extra.motivoFine = 'scadenza';
+  setTimeout(() => jobForm(Object.assign({}, base, r.ex, extra), r.ex, onSaved), 230);
+}
+const CAMPI_LAVORO = [['azienda', 'Azienda'], ['ruolo', 'Ruolo'], ['sede', 'Città'], ['tipo', 'Contratto', (v) => TIPI[v] || v], ['inizio', 'Inizio', dateLabel], ['fine', 'Fine', dateLabel], ['ccnl', 'CCNL', (v) => CCNL_NOMI[v] || v], ['livello', 'Livello', (v, ex, j) => livelloLabel({ ccnl: ex.ccnl || j.ccnl, livello: v })], ['oreSett', 'Ore a settimana', (v) => num(v)], ['superminimo', 'Superminimo', eur], ['disponibilita', 'Obbligo di disponibilità', (v) => (v ? 'sì' : 'no')]];
+/** Dopo aver caricato un documento in un lavoro: propongo di aggiornare i dati (es. proroga) */
+async function proponiAggiornamento(j, file, doc) {
+  let testo = ''; try { testo = await leggiFile(file); } catch (e) { return; }
+  if (!testo || testo.replace(/\s/g, '').length < 40) return;
+  if (/proroga|prorogat/i.test(testo)) doc.categoria = 'proroga'; else if (/certificazione\s*unica/i.test(testo)) { doc.categoria = 'cu'; save(); render(); return; }
+  const ex = parseContratto(testo); if (ex.inizio && doc.categoria !== 'proroga') doc.data = ex.inizio;
+  if (doc.categoria === 'proroga') { delete ex.inizio; delete ex.azienda; }
+  const diff = CAMPI_LAVORO.filter(([k]) => ex[k] != null && ex[k] !== '' && String(ex[k]) !== String(j[k] ?? ''));
+  save(); render();
+  if (!diff.length) { toast('Documento letto: i dati del lavoro sono già aggiornati'); return; }
+  const fmt = (c, v) => (v == null || v === '' ? '—' : c[2] ? c[2](v, ex, j) : String(v));
+  const sh = openSheet(`<h3>${doc.categoria === 'proroga' ? 'È una proroga' : 'Ho letto il documento'}</h3><p class="lead">Vuoi aggiornare ${esc(j.azienda)} con questi dati?</p>
+    <div class="list">${diff.map((c) => `<label class="li static check" style="padding:9px 0"><input type="checkbox" data-k="${c[0]}" ${c[0] === 'azienda' ? '' : 'checked'}><span class="switch"></span><span class="grow"><b>${c[1]}</b><span class="hint">${esc(fmt(c, j[c[0]]))} → <b style="color:var(--text)">${esc(fmt(c, ex[c[0]]))}</b></span></span></label>`).join('')}</div>
+    <div class="btns" style="margin-top:12px"><button class="btn ghost" data-x="no">Lascia com'è</button><button class="btn" data-x="ok">Aggiorna</button></div>`);
+  sh.addEventListener('click', (e) => {
+    const x = e.target.closest('[data-x]'); if (!x) return;
+    if (x.dataset.x === 'ok') { $$('input[data-k]', sh).forEach((c) => { if (c.checked) j[c.dataset.k] = ex[c.dataset.k]; }); if (j.fine && j.inizio && j.fine < j.inizio) j.fine = null; save(); render(); toast('Lavoro aggiornato'); }
+    closeSheet();
+  });
+}
+
 function jobForm(pref = {}, extracted = null, onSaved = null) {
   const j = Object.assign({ tipo: 'indeterminato', ccnl: 'commercio', livello: '4', oreSett: 40, oreSettFull: 40, giorniSett: 5, oltre15: true, domenicaRiposo: true, colore: COLORI[S.lavori.length % COLORI.length] }, pref);
   const ex = extracted || {}; const tag = (k) => (ex[k] != null ? ' <span class="badge ok">dal contratto</span>' : '');
   const M = Object.assign({}, E.CCNL.commercio.magg, j.magg || {});
   const lvSel = (ccnl) => `<select class="inp" name="lv_${ccnl}">${livelliDi(ccnl).map(([k, l, v]) => `<option value="${k}" ${String(j.livello) === k && (j.ccnl || 'commercio') === ccnl ? 'selected' : ''}>${l} · ${eur0(v)}</option>`).join('')}</select>`;
-  let h = `<h3>${pref.id ? 'Modifica lavoro' : 'Nuovo lavoro'}</h3><p class="lead">${extracted ? `Ho letto ${Object.keys(ex).length} dati dal contratto: controllali.` : 'Ti bastano i primi campi; il resto lo puoi aggiungere dopo.'}</p>
+  const nEx = Object.keys(ex).length;
+  let h = `<h3>${pref.id ? 'Modifica lavoro' : 'Nuovo lavoro'}</h3>${extracted ? (nEx ? `<p class="lead">Dal contratto ho compilato ${nEx} campi (con il segno <span class="badge ok">dal contratto</span>): controllali e completa il resto.</p>` : `<p class="banner">${pref._letto === false ? 'Non riesco a leggere il testo di questo file (forse è una foto poco nitida o una scansione): compila i campi a mano.' : 'Ho letto il contratto ma non ho trovato i dati principali: compila i campi a mano.'} Il documento resta comunque allegato al lavoro.</p>`) : '<p class="lead">Ti bastano i primi campi; il resto lo puoi aggiungere dopo.</p>'}
   ${!pref.id && !extracted ? `<button class="btn ghost block" style="margin-bottom:14px" data-x="leggi">${ic.upload} Compila dal contratto (PDF o foto)</button>` : ''}
   <form data-form="job">
   <div class="sec-title" style="margin-top:0">Il lavoro</div>
-  <label class="field"><span>Azienda / datore di lavoro</span><input class="inp" name="azienda" value="${esc(j.azienda || '')}" required placeholder="es. Negozio Rossi srl"></label>
-  <div class="fgrid"><label class="field"><span>Ruolo${tag('ruolo')}</span><input class="inp" name="ruolo" value="${esc(j.ruolo || '')}" placeholder="es. Addetto vendite"></label><label class="field"><span>Città</span><input class="inp" name="sede" value="${esc(j.sede || '')}"></label></div>
+  <label class="field"><span>Azienda / datore di lavoro${tag('azienda')}</span><input class="inp" name="azienda" value="${esc(j.azienda || '')}" required placeholder="es. Negozio Rossi srl"></label>
+  <label class="field"><span>Ruolo${tag('ruolo')}</span><input class="inp" name="ruolo" value="${esc(j.ruolo || '')}" placeholder="es. Addetto vendite"></label>
+  <label class="field"><span>Città${tag('sede')}</span><input class="inp" name="sede" value="${esc(j.sede || '')}" placeholder="Dove lavori"></label>
   <label class="field"><span>Tipo di contratto${tag('tipo')}</span><select class="inp" name="tipo">${Object.entries(TIPI).map(([k, v]) => `<option value="${k}" ${j.tipo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
   <div class="fgrid"><label class="field"><span>Inizio${tag('inizio')}</span><input class="inp" type="date" name="inizio" value="${j.inizio || ''}" required></label><label class="field"><span>Fine${tag('fine')}</span><input class="inp" type="date" name="fine" value="${j.fine || ''}"><span class="hint">Vuoto se non ha scadenza</span></label></div>
   <div data-fine><label class="field"><span>Come è finito / finirà</span><select class="inp" name="motivoFine"><option value="">—</option>${Object.entries(MOTIVI).map(([k, v]) => `<option value="${k}" ${j.motivoFine === k ? 'selected' : ''}>${v}</option>`).join('')}</select><span class="hint">Serve per capire se ti spetta la NASpI</span></label></div>
@@ -1031,11 +1146,8 @@ function jobForm(pref = {}, extracted = null, onSaved = null) {
     if (e.target.closest('[data-x="cancel"]')) closeSheet();
     const lb = e.target.closest('[data-x="leggi"]'); if (!lb) return;
     const file = (await pickFile('application/pdf,image/*'))[0]; if (!file) return;
-    lb.innerHTML = '<span class="spin"></span> Leggo il contratto…';
-    let ex2 = {}; try { ex2 = parseContratto(await leggiFile(file)); } catch (err) {}
-    const fid = uid(); await filePut(fid, file, { name: file.name, type: file.type });
-    const cur = Object.fromEntries(new FormData(form).entries()); delete cur.ccnl;
-    closeSheet(); setTimeout(() => jobForm(Object.assign({}, j, cur, ex2, { _doc: { id: uid(), fileId: fid, nome: file.name.replace(/\.[a-z0-9]+$/i, ''), categoria: 'contratto', data: ex2.inizio || todayISO() } }), ex2, onSaved), 230);
+    const cur = Object.fromEntries([...new FormData(form).entries()].filter(([, v]) => v !== '')); delete cur.ccnl;
+    closeSheet(); setTimeout(() => nuovoLavoroDaContratto(file, onSaved, Object.assign({}, j, cur)), 230);
   });
   form.addEventListener('submit', (e) => {
     e.preventDefault(); const fd = new FormData(form);
@@ -1068,7 +1180,8 @@ async function addDocs(jobId, files) {
     const cat = /\bcu\b|certificaz/i.test(f.name) ? 'cu' : /proroga|trasform/i.test(f.name) ? 'proroga' : /dimiss|cessaz|licenz/i.test(f.name) ? 'cessazione' : /contratt|assunz/i.test(f.name) || !j.documenti.length ? 'contratto' : 'altro';
     j.documenti.push({ id: uid(), fileId: fid, nome: f.name.replace(/\.[a-z0-9]+$/i, ''), categoria: cat, data: todayISO() });
   }
-  save(); render(); toast(files.length === 1 ? 'Documento caricato' : `${files.length} documenti caricati`);
+  save(); render(); toast(files.length === 1 ? 'Documento caricato: lo leggo…' : `${files.length} documenti caricati`);
+  const f0 = files[0]; if (files.length === 1 && (f0.type === 'application/pdf' || /\.pdf$/i.test(f0.name) || f0.type.startsWith('image/'))) proponiAggiornamento(j, f0, j.documenti[j.documenti.length - 1]);
 }
 function docMenu(jobId, docId) {
   const j = job(jobId); const d = (j.documenti || []).find((x) => x.id === docId); if (!d) return;
@@ -1607,9 +1720,9 @@ async function gestisciCondivisi(files) {
   sh.addEventListener('click', (e) => {
     const b = e.target.closest('[data-k]'); if (!b) return; const k = b.dataset.k; const fs = fileInArrivo; closeSheet();
     setTimeout(() => {
-      if (!S.lavori.length && k !== 'busta') { toast('Prima aggiungi il lavoro'); return actions['job-new'](); }
+      if (!S.lavori.length && !['busta', 'doc'].includes(k)) { toast('Prima aggiungi il lavoro'); return actions['job-new'](); }
       if (k === 'busta') caricaBusta(fs);
-      if (k === 'doc') { if (S.lavori.length === 1) { location.hash = '#lavoro-' + S.lavori[0].id; setTimeout(() => addDocs(S.lavori[0].id, fs), 80); return; } const s2 = openSheet(`<h3>Di quale lavoro?</h3>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`); s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; closeSheet(); location.hash = '#lavoro-' + x.dataset.j; setTimeout(() => addDocs(x.dataset.j, fs), 80); }); }
+      if (k === 'doc') { const s2 = openSheet(`<h3>Di quale lavoro?</h3><button class="action" data-j="nuovo"><span class="ic" style="background:var(--accent-soft);color:var(--accent)">${ic.plus}</span><span><b>Un lavoro nuovo</b><small>Leggo il contratto e creo il lavoro</small></span></button>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`); s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; closeSheet(); if (x.dataset.j === 'nuovo') { setTimeout(() => nuovoLavoroDaContratto(fs[0]), 230); return; } location.hash = '#lavoro-' + x.dataset.j; setTimeout(() => addDocs(x.dataset.j, fs), 80); }); }
       if (k === 'cu') caricaCU((attivo() || {}).id, new Date().getFullYear() - 1, fs[0]);
       if (k === 'planning') { location.hash = '#turni'; setTimeout(() => importaTurni(fs[0]), 80); }
     }, 230);
@@ -1843,9 +1956,8 @@ const actions = {
         if (a === 'turno-oggi') { if (!S.lavori.length) return actions['job-new'](); turniYM = curYM(); location.hash = '#turni'; setTimeout(() => giornoSheet(todayISO()), 60); return; }
         if (a === 'import-turni') { if (!S.lavori.length) return actions['job-new'](); location.hash = '#turni'; setTimeout(importaTurni, 60); return; }
         if (a === 'doc-any') {
-          if (!S.lavori.length) return actions['job-new'](); if (S.lavori.length === 1) return addDocs(S.lavori[0].id);
-          const s2 = openSheet(`<h3>Di quale lavoro?</h3><p class="lead">Scegli il datore di lavoro del documento.</p>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`);
-          s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; closeSheet(); location.hash = '#lavoro-' + x.dataset.j; setTimeout(() => addDocs(x.dataset.j), 80); }); return;
+          const s2 = openSheet(`<h3>Di quale lavoro?</h3><p class="lead">Se è il contratto di un lavoro nuovo, compilo io la scheda.</p><button class="action" data-j="nuovo"><span class="ic" style="background:var(--accent-soft);color:var(--accent)">${ic.plus}</span><span><b>Un lavoro nuovo</b><small>Leggo il contratto e creo il lavoro</small></span></button>${S.lavori.map((j) => `<button class="action" data-j="${j.id}">${jobAvatar(j)}<span><b>${esc(j.azienda)}</b><small>${jobPeriodo(j)}</small></span></button>`).join('')}`);
+          s2.addEventListener('click', (ev) => { const x = ev.target.closest('[data-j]'); if (!x) return; const id = x.dataset.j; if (id === 'nuovo') { pickFile('application/pdf,image/*').then((fs) => { closeSheet(); if (fs[0]) setTimeout(() => nuovoLavoroDaContratto(fs[0]), 230); }); return; } pickFile('application/pdf,image/*', true).then((fs) => { closeSheet(); if (!fs.length) return; location.hash = '#lavoro-' + id; setTimeout(() => addDocs(id, fs), 120); }); }); return;
         }
         actions[a] && actions[a]();
       }, 230);
@@ -1892,7 +2004,7 @@ const actions = {
   'ob-next'() { obSalva(); obStep = Math.min(4, obStep + 1); render(); scrollTo(0, 0); },
   'ob-back'() { obSalva(); obStep = Math.max(0, obStep - 1); render(); },
   'ob-skip'() { S.onboarded = true; save(); location.hash = '#home'; },
-  'ob-job'(el) { obSalva(); const done = () => { obStep = 3; location.hash = '#benvenuto'; render(); }; if (el.dataset.m === 'pdf') { jobForm({}, null, done); setTimeout(() => { const b = $('[data-x="leggi"]'); if (b) b.click(); }, 300); } else jobForm({}, null, done); },
+  'ob-job'(el) { obSalva(); const done = () => { obStep = 3; location.hash = '#benvenuto'; render(); }; if (el.dataset.m === 'pdf') pickFile('application/pdf,image/*').then((fs) => { if (fs[0]) nuovoLavoroDaContratto(fs[0], done); }); else jobForm({}, null, done); },
   'ob-fine'(el) { S.onboarded = true; save(); const g = el.dataset.go2; obStep = 0; if (g.startsWith('#')) location.hash = g; else { location.hash = '#home'; setTimeout(() => actions[g](), 120); } },
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },

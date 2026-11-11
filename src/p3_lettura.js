@@ -12,13 +12,32 @@ async function pdfText(blob) {
   }
   return lines.join('\n');
 }
-async function ocrText(blob, onProg) {
-  if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
-  const r = await window.Tesseract.recognize(blob, 'ita', { logger: (m) => { if (m.status === 'recognizing text' && onProg) onProg(m.progress); } });
-  return r.data.text;
+let ocrWorkerP = null; let ocrProg = null;
+async function ocrWorker() {
+  if (!ocrWorkerP) ocrWorkerP = (async () => {
+    if (!window.Tesseract) await loadScript('https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js');
+    return window.Tesseract.createWorker('ita', 1, { logger: (m) => { if (m.status === 'recognizing text' && ocrProg) ocrProg(m.progress); } });
+  })().catch((e) => { ocrWorkerP = null; throw e; });
+  return ocrWorkerP;
+}
+async function ocrText(img, onProg) { const w = await ocrWorker(); ocrProg = onProg; try { const r = await w.recognize(img); return r.data.text; } finally { ocrProg = null; } }
+/** PDF scansionato (solo immagini): disegno le pagine e leggo il testo con l'OCR */
+async function pdfOCR(blob, onProg) {
+  const pdf = await pdfLib().getDocument({ data: await blob.arrayBuffer() }).promise; const n = Math.min(pdf.numPages, 4); let out = '';
+  for (let i = 1; i <= n; i++) {
+    const page = await pdf.getPage(i); const vp = page.getViewport({ scale: 2.2 });
+    const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
+    await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+    out += (await ocrText(cv, (x) => onProg && onProg((i - 1 + x) / n, `Pagina ${i} di ${n}`))) + '\n';
+  }
+  return out;
 }
 async function leggiFile(file, onProg) {
-  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) return pdfText(file);
+  if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
+    const t = await pdfText(file);
+    if (t.replace(/\s/g, '').length >= 150) return t;
+    try { if (onProg) onProg(0, 'È una scansione: riconosco il testo…'); const o = await pdfOCR(file, onProg); return o.trim() ? o : t; } catch (e) { return t; }
+  }
   if (file.type.startsWith('image/')) return ocrText(file, onProg);
   if (file.type.startsWith('text/') || /\.(txt|csv|ics)$/i.test(file.name)) return file.text();
   return '';
@@ -74,24 +93,76 @@ function parseBusta(text) {
   found._appresi = appresi;
   return found;
 }
-function parseContratto(text) {
-  const f = {}; const romani = { I: '1', II: '2', III: '3', IV: '4', V: '5', VI: '6', VII: '7' };
-  if (/turismo|alberghi|federalberghi/i.test(text)) f.ccnl = 'turismo';
-  else if (/pubblici\s*esercizi|fipe|ristorazione/i.test(text)) f.ccnl = 'pubblici';
-  else if (/multiservizi|pulizi/i.test(text)) f.ccnl = 'multiservizi';
-  else if (/terziario|commercio|confcommercio/i.test(text)) f.ccnl = 'commercio';
-  let m = text.match(/\b(I{1,3}|IV|V|VI|VII|[1-7])\s*°?\s*(super\s*)?livello/i) || text.match(/livello\s*:?\s*(I{1,3}|IV|V|VI{0,2}|[1-7]|quadro)\b/i);
-  if (m) { const k = m[1].toUpperCase(); f.livello = k === 'QUADRO' ? 'Q' : romani[k] || k; if (m[2] && f.ccnl !== 'commercio') f.livello += 'S'; }
-  m = text.match(/(\d{1,2}(?:[.,]\d)?)\s*ore\s*(settimanali|a\s*settimana|sett)/i) || text.match(/orario[^.\n]{0,40}?(\d{1,2})\s*ore/i);
+const MESI_RE = MESI.join('|');
+const ORDINALI = { primo: '1', secondo: '2', terzo: '3', quarto: '4', quinto: '5', sesto: '6', settimo: '7' };
+/** Tutte le date nel testo (numeriche o "19 maggio 2026") con la loro posizione */
+function dateNelTesto(text) {
+  const out = []; let m;
+  const re1 = /\b(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})\b/g;
+  while ((m = re1.exec(text))) { const g = +m[1], mo = +m[2]; let y = +m[3]; if (y < 100) y += 2000; if (g >= 1 && g <= 31 && mo >= 1 && mo <= 12 && y >= 1950 && y <= 2100) out.push({ iso: `${y}-${pad(mo)}-${pad(g)}`, i: m.index }); }
+  const re2 = new RegExp(`\\b(\\d{1,2})\\s*[°ºo]?\\s*(?:di\\s+)?(${MESI_RE})\\s+(\\d{4})\\b`, 'gi');
+  while ((m = re2.exec(text))) out.push({ iso: `${m[3]}-${pad(MESI.indexOf(m[2].toLowerCase()) + 1)}-${pad(m[1])}`, i: m.index });
+  return out.sort((a, b) => a.i - b.i);
+}
+function parseContratto(raw) {
+  const f = {}; const text = String(raw || '').replace(/ /g, ' ').replace(/[ \t]+/g, ' ');
+  const flat = text.replace(/\s*\n\s*/g, ' ');
+  const romani = { I: '1', II: '2', III: '3', IV: '4', V: '5', VI: '6', VII: '7' };
+  // contratto collettivo
+  if (/pubblici\s*esercizi|fipe\b|ristorazione/i.test(flat)) f.ccnl = 'pubblici';
+  else if (/turismo|alberghi|federalberghi/i.test(flat)) f.ccnl = 'turismo';
+  else if (/multiservizi|imprese\s*di\s*pulizia|servizi\s*di\s*pulizia/i.test(flat)) f.ccnl = 'multiservizi';
+  else if (/terziario|distribuzione\s*e\s*(?:dei\s*)?servizi|commercio|confcommercio|confesercenti/i.test(flat)) f.ccnl = 'commercio';
+  else if (/cinematograf|cinema/i.test(flat)) { f.ccnl = 'altro'; f.ccnlNome = 'Esercizi cinematografici'; }
+  // tipo di contratto
+  if (/intermittente|a\s*chiamata|job\s*on\s*call/i.test(flat)) f.tipo = 'chiamata';
+  else if (/apprendistato/i.test(flat)) f.tipo = 'apprendistato';
+  else if (/somministrazione/i.test(flat)) f.tipo = 'somministrazione';
+  else if (/stagional/i.test(flat)) f.tipo = 'stagionale';
+  else if (/trasformazione[^.]{0,80}tempo\s*indeterminato/i.test(flat)) f.tipo = 'indeterminato';
+  else if (/tempo\s*determinato|a\s*termine/i.test(flat)) f.tipo = 'determinato';
+  else if (/tempo\s*indeterminato/i.test(flat)) f.tipo = 'indeterminato';
+  if (/proroga|prorogat/i.test(flat)) f._proroga = true;
+  // livello
+  let m = flat.match(/\b(I{1,3}|IV|VI{0,2}|V|[1-7])\s*(?:°|º|\^)?\s*(super\s*)?livell/i)
+    || flat.match(/livell[oi]\s*(?:di\s*inquadramento)?\s*:?\s*(I{1,3}|IV|VI{0,2}|V|[1-7])\s*(?:°|º)?\s*(super)?\b/i)
+    || flat.match(/\b(primo|secondo|terzo|quarto|quinto|sesto|settimo)\s*(super\s*)?livell/i)
+    || flat.match(/livello\s*(quadro)/i);
+  if (m) { const k = m[1]; let lv = ORDINALI[k.toLowerCase()] || romani[k.toUpperCase()] || (/quadro/i.test(k) ? 'Q' : k); if (m[2] && f.ccnl && f.ccnl !== 'commercio') lv += 'S'; f.livello = lv; }
+  // orario
+  m = flat.match(/(\d{1,2}(?:[.,]\d{1,2})?)\s*(?:ore|h)\s*(?:settimanali|a\s*settimana|alla\s*settimana|per\s*settimana|sett\.)/i)
+    || flat.match(/orario[^.;]{0,90}?\b(\d{1,2}(?:[.,]\d{1,2})?)\s*ore\b/i);
   if (m) f.oreSett = toNum(m[1]);
-  const d = '(\\d{1,2}[/.-]\\d{1,2}[/.-]\\d{2,4})';
-  const toIso = (s) => { const [a, b, c] = s.split(/[/.-]/).map(Number); const y = c < 100 ? 2000 + c : c; return `${y}-${pad(b)}-${pad(a)}`; };
-  m = text.match(new RegExp(`(?:dal|decorrenza|a\\s*decorrere\\s*dal|data\\s*(?:di\\s*)?(?:assunzione|inizio))\\s*:?\\s*${d}`, 'i')); if (m) f.inizio = toIso(m[1]);
-  for (const mm of text.matchAll(new RegExp(`(?:\\bal|fino\\s*al|scadenza|termine)\\s*:?\\s*${d}`, 'gi'))) { const v = toIso(mm[1]); if ((!f.inizio || v > f.inizio) && (!f.fine || v > f.fine)) f.fine = v; }
-  if (/intermittente|a\s*chiamata/i.test(text)) f.tipo = 'chiamata'; else if (/apprendistato/i.test(text)) f.tipo = 'apprendistato'; else if (/tempo\s*determinato|a\s*termine/i.test(text)) f.tipo = 'determinato'; else if (/tempo\s*indeterminato/i.test(text)) f.tipo = 'indeterminato';
-  m = text.match(/superminimo[^\d\n]{0,30}(\d{1,3}(?:\.\d{3})*,\d{2})/i); if (m) f.superminimo = pnum(m[1]);
-  m = text.match(/mansion[ei][^:\n]{0,20}:?\s*([^\n.]{4,60})/i); if (m) f.ruolo = cap(m[1].trim().replace(/^di\s+/i, ''));
-  if (/obbligo\s*di\s*(risposta|disponibilit)|indennit[aà]\s*di\s*disponibilit/i.test(text)) f.disponibilita = true;
+  else if ((m = flat.match(/(?:part[\s-]?time|tempo\s*parziale)[^.;]{0,80}?(\d{2,3})\s*%/i) || flat.match(/(\d{2,3})\s*%\s*(?:dell['’]?\s*orario|del\s*tempo\s*pieno|dell['’]?\s*orario\s*(?:normale|contrattuale|a\s*tempo\s*pieno))/i))) f.oreSett = Math.round(40 * Number(m[1]) / 100 * 10) / 10;
+  else if (/tempo\s*pieno|full[\s-]?time/i.test(flat) && !/part[\s-]?time|tempo\s*parziale/i.test(flat)) f.oreSett = 40;
+  // date: guardo le parole che le precedono
+  const ctx = (d) => flat.slice(Math.max(0, d.i - 70), d.i).toLowerCase();
+  const date = dateNelTesto(flat).filter((d) => !/\bnat[oa]\b|nascita|rilasciat|emess|scadenza\s*(?:del\s*)?documento|(?:^|[\s,])l[iì]\s*,?\s*$|protocollo/.test(ctx(d).slice(-40)));
+  const kIni = /(?:\bdal|decorrenza(?:\s*dal)?|a\s*decorrere\s*dal|a\s*partire\s*dal|data\s*(?:di\s*)?(?:assunzione|inizio)[^0-9]{0,20}|assunt[oa][^.]{0,30}?\bil|inizio\s*(?:del\s*)?rapporto[^0-9]{0,20})\s*:?\s*$/;
+  const kFin = /(?:\bal|fino\s*al|sino\s*al|scadenza(?:\s*(?:il|al))?|termine(?:\s*(?:il|al))?|cessazione[^0-9]{0,20}|data\s*(?:di\s*)?(?:fine|termine|scadenza)[^0-9]{0,20}|prorogat[oa][^0-9]{0,30})\s*:?\s*$/;
+  for (const d of date) { const c = ctx(d); if (!f.inizio && kIni.test(c)) f.inizio = d.iso; else if (kFin.test(c) && (!f.inizio || d.iso > f.inizio) && (!f.fine || d.iso > f.fine)) f.fine = d.iso; }
+  if (!f.inizio && date.length) { const s = date.map((d) => d.iso).sort(); f.inizio = s[0]; if (!f.fine && f.tipo && f.tipo !== 'indeterminato' && s.length > 1 && s[s.length - 1] > s[0]) f.fine = s[s.length - 1]; }
+  if (f._proroga && f.inizio && !f.fine) { f.fine = f.inizio; delete f.inizio; }
+  if (f.tipo === 'indeterminato' && !f._proroga) delete f.fine;
+  // azienda (ragione sociale con forma giuridica)
+  const formaG = String.raw`(?:S\.?\s?p\.?\s?A\.?|S\.?\s?r\.?\s?l\.?(?:\s?s\.?)?|S\.?\s?n\.?\s?c\.?|S\.?\s?a\.?\s?s\.?|Soc(?:ietà)?\.?\s*Coop(?:erativa)?\.?(?:\s*a\s*r\.?\s*l\.?)?|Coop\.?|S\.?\s?c\.?\s?a\.?\s?r\.?\s?l\.?|Spa|Srl|SPA|SRL|SNC|SAS)`;
+  m = flat.match(new RegExp(String.raw`(?:societ[àa]|ditta|azienda|datore\s*di\s*lavoro|denominazione|ragione\s*sociale)\s*:?\s*["“]?([A-Z0-9][\w&'’.\- ]{1,50}?\s${formaG})(?=[\s,.;)"”]|$)`, 'i'))
+    || text.match(new RegExp(String.raw`(?:^|\n)\s*([A-Z0-9][\w&'’.\- ]{1,50}?\s${formaG})(?=[\s,.;)]|$)`, 'm'))
+    || flat.match(new RegExp(String.raw`\b([A-Z][A-Z0-9&'’.\- ]{1,40}?\s${formaG})(?=[\s,.;)]|$)`));
+  if (m) f.azienda = m[1].replace(/^(?:la|tra|fra)\s+/i, '').replace(/\s+/g, ' ').trim();
+  else if ((m = flat.match(/(?:datore\s*di\s*lavoro|società|azienda)\s*:\s*([A-Z][^,;\n(]{2,50})/))) f.azienda = m[1].trim();
+  // mansione / qualifica
+  m = flat.match(/(?:con\s*(?:la\s*)?qualifica\s*(?:professionale\s*)?(?:di|:)|con\s*(?:le\s*)?mansioni\s*(?:di|:)|in\s*qualit[àa]\s*di|mansione\s*:|qualifica\s*:|profilo\s*(?:professionale)?\s*(?:di|:))\s*["“]?([A-Za-zÀ-ù'’ \/-]{3,45}?)["”]?(?=[,.;:(\n]|\s+(?:e|ed|con|presso|livello|inquadrat|che|per|a\s*tempo|part)\b|$)/i);
+  if (m && !/seguent|indicat|previst|descritt/i.test(m[1])) f.ruolo = cap(m[1].trim().replace(/^(?:di|un|una|addett[oa] a)\s+(?=\S)/i, (x) => (/addett/i.test(x) ? x : '')).trim());
+  // sede di lavoro
+  m = flat.match(/(?:sede\s*di\s*lavoro|luogo\s*di\s*lavoro|luogo\s*della\s*prestazione)\s*:?\s*(?:presso\s*)?(?:il\s*|la\s*|l['’])?([A-Z][A-Za-zÀ-ù'’ ]{2,40}?)(?=[,.;(\n]|\s+(?:via|piazza|viale|corso|presso|centro|c\/o)\b|$)/i)
+    || flat.match(/presso\s*(?:il\s*punto\s*vendita|la\s*(?:nostra\s*)?(?:sede|filiale)|l['’]\s*unit[àa]\s*(?:produttiva|locale)|il\s*negozio|lo\s*stabilimento)\s*(?:di|sit[oa]\s*(?:in|a))\s*([A-Z][A-Za-zÀ-ù'’ ]{2,40}?)(?=[,.;(\n]|\s+(?:via|piazza|viale|corso|presso|centro|c\/o)\b|$)/i);
+  if (m) f.sede = m[1].trim();
+  // altro
+  m = flat.match(/superminimo[^\d\n]{0,40}(\d{1,3}(?:\.\d{3})*,\d{2})/i); if (m) f.superminimo = pnum(m[1]);
+  if (/obbligo\s*di\s*(?:risposta|disponibilit)|indennit[aà]\s*di\s*disponibilit/i.test(flat)) f.disponibilita = true;
+  if (f.ccnl === 'altro' && (m = flat.match(/retribuzione[^.]{0,80}?(?:€|euro)\s*(\d{1,3}(?:\.\d{3})*,\d{2})/i))) f.minimoManuale = pnum(m[1]);
+  delete f._proroga;
   return f;
 }
 function parseCU(text) {
