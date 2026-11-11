@@ -1532,7 +1532,7 @@ let obStep = 0;
 function viewBenvenuto() {
   const P = S.profilo; const dots = `<div class="dots">${[0, 1, 2, 3, 4].map((i) => `<span class="${i === obStep ? 'on' : i < obStep ? 'done' : ''}"></span>`).join('')}</div>`;
   let h = `<div class="ob fade">${dots}`;
-  if (obStep === 0) h += `<div class="ob-hero"><img src="icons/icon.svg" alt="" width="84" height="84"><h1>Benvenuto in Cedolino</h1><p>Ti aiuto a capire e controllare le tue buste paga, in parole semplici.</p></div>
+  if (obStep === 0) h += `<div class="ob-hero"><img src="icons/icon.svg?v=2" alt="" width="84" height="84"><h1>Benvenuto in Cedolino</h1><p>Ti aiuto a capire e controllare le tue buste paga, in parole semplici.</p></div>
     <div class="card">${[[ic.calc, 'Quanto prendi davvero', 'Calcolo il netto dal tuo contratto e dai turni.'], [ic.check, 'Controllo delle buste', 'Carichi il PDF, ti dico se i conti tornano.'], [ic.bag, 'I tuoi lavori in ordine', 'Contratti, documenti, ferie, TFR e NASpI.']].map(([i, t, p]) => `<div class="chk ok"><div class="dot">${i}</div><div><b>${t}</b><p>${p}</p></div></div>`).join('')}</div>
     <button class="btn block" data-act="ob-next">Iniziamo</button><div class="row" style="justify-content:center;gap:18px;margin-top:10px"><button class="link" data-act="import">Ho un backup</button><button class="link" data-act="ob-skip">Salta</button></div><p class="note" style="text-align:center">I dati restano sul tuo telefono.</p>`;
   if (obStep === 1) h += `<h2 class="ob-t">Come ti chiami?</h2><p class="muted">Lo uso solo per salutarti e per firmare i messaggi all'ufficio paghe.</p>
@@ -1760,7 +1760,7 @@ async function avvisaSeServe() {
   if (!urg.length) return;
   S.notificato = oggi; save({ noSync: true });
   const body = urg.slice(0, 3).map((t) => '• ' + t.t).join('\n');
-  try { const reg = navigator.serviceWorker && (await navigator.serviceWorker.getRegistration()); if (reg) reg.showNotification('Cedolino', { body, icon: 'icons/icon-192.png', tag: 'cedolino-prom' }); else new Notification('Cedolino', { body, icon: 'icons/icon-192.png' }); } catch (e) {}
+  try { const reg = navigator.serviceWorker && (await navigator.serviceWorker.getRegistration()); if (reg) reg.showNotification('Cedolino', { body, icon: 'icons/icon-192.png?v=2', tag: 'cedolino-prom' }); else new Notification('Cedolino', { body, icon: 'icons/icon-192.png?v=2' }); } catch (e) {}
 }
 
 /* ---- CV ---- */
@@ -1815,7 +1815,7 @@ window.addEventListener('appinstalled', () => { installEvt = null; toast('Cedoli
 function cardInstalla() {
   if (isStandalone() || S.installNascosto) return '';
   const ios = isIOS(); if (!installEvt && !ios) return '';
-  return `<div class="card install"><div class="row"><img src="icons/icon-192.png" alt="" width="44" height="44" style="border-radius:12px"><div class="grow"><b>Installa Cedolino</b><div class="small muted">Si apre come un'app, funziona anche offline e ricevi i PDF dal menu Condividi.</div></div></div>
+  return `<div class="card install"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="44" height="44" style="border-radius:12px"><div class="grow"><b>Installa Cedolino</b><div class="small muted">Si apre come un'app, funziona anche offline e ricevi i PDF dal menu Condividi.</div></div></div>
     <div class="btns" style="margin-top:12px"><button class="btn ghost" data-act="install-no">Non ora</button><button class="btn" data-act="install">${ic.download} Installa</button></div></div>`;
 }
 async function installa() {
@@ -1921,7 +1921,7 @@ function viewImpostazioni() {
     <label class="check"><input type="checkbox" data-act="cdc-auto" ${S.cdc.auto ? 'checked' : ''}><span class="switch"></span><span class="grow">Invia automaticamente ogni nuova busta</span></label>
     ${nb ? `<button class="btn ghost block" data-act="cdc-tutte">${ic.link} Invia tutte le buste (${nb})</button>` : ''}
     <p class="note">Funziona se Conto di Casa è sullo stesso sito (es. le tue app su github.io) oppure se accedi con Google in entrambe.</p></div>`;
-  h += `<div class="sec-title">App</div><div class="card"><div class="row"><img src="icons/icon-192.png" alt="" width="40" height="40" style="border-radius:11px"><div class="grow"><b>${isStandalone() ? 'Cedolino è installata' : 'Cedolino come app'}</b><div class="small muted">${isStandalone() ? 'Funziona offline e ricevi i PDF dal menu Condividi.' : 'Installala per aprirla dalla schermata Home, usarla offline e ricevere i PDF da altre app.'}</div></div></div>
+  h += `<div class="sec-title">App</div><div class="card"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="40" height="40" style="border-radius:11px"><div class="grow"><b>${isStandalone() ? 'Cedolino è installata' : 'Cedolino come app'}</b><div class="small muted">${isStandalone() ? 'Funziona offline e ricevi i PDF dal menu Condividi.' : 'Installala per aprirla dalla schermata Home, usarla offline e ricevere i PDF da altre app.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${isStandalone() ? '' : `<button class="btn" data-act="install">${ic.download} Installa</button>`}<button class="btn ghost" data-act="aggiorna">Cerca aggiornamenti</button></div></div>`;
   h += `<div class="sec-title">Dati</div><div class="card"><p class="small muted" style="margin-top:0">Tutto resta sul tuo telefono${S.sync.on ? ' (e nella copia cifrata)' : ''}. Fai un backup ogni tanto.</p>
   <div class="btns"><button class="btn ghost" data-act="export">${ic.download} Esporta backup</button><button class="btn ghost" data-act="import">${ic.upload} Importa</button></div>
@@ -2023,7 +2023,7 @@ let lockedAt = 0;
 function lockScreen(verifica) {
   return new Promise((resolve) => {
     const el = document.createElement('div'); el.className = 'lock';
-    el.innerHTML = `<div class="lock-in"><img src="icons/icon.svg" alt="" width="64" height="64"><h2>Cedolino è bloccato</h2><p class="muted" id="lkMsg">Inserisci il PIN</p><div class="pinDots" id="lkDots"></div><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((k) => (k === '' ? '<span></span>' : `<button type="button" data-k="${k}" aria-label="${k === '⌫' ? 'Cancella' : k}">${k}</button>`)).join('')}</div><button class="btn block" id="lkOk">Sblocca</button><button class="link" id="lkForgot" style="margin-top:14px">Ho dimenticato il PIN</button></div>`;
+    el.innerHTML = `<div class="lock-in"><img src="icons/icon.svg?v=2" alt="" width="64" height="64"><h2>Cedolino è bloccato</h2><p class="muted" id="lkMsg">Inserisci il PIN</p><div class="pinDots" id="lkDots"></div><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((k) => (k === '' ? '<span></span>' : `<button type="button" data-k="${k}" aria-label="${k === '⌫' ? 'Cancella' : k}">${k}</button>`)).join('')}</div><button class="btn block" id="lkOk">Sblocca</button><button class="link" id="lkForgot" style="margin-top:14px">Ho dimenticato il PIN</button></div>`;
     document.body.appendChild(el); let pin = '';
     const dots = () => { $('#lkDots', el).innerHTML = Array.from({ length: Math.max(4, pin.length) }, (_, i) => `<i class="${i < pin.length ? 'on' : ''}"></i>`).join(''); };
     dots();

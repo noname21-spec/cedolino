@@ -10,7 +10,7 @@ window.addEventListener('appinstalled', () => { installEvt = null; toast('Cedoli
 function cardInstalla() {
   if (isStandalone() || S.installNascosto) return '';
   const ios = isIOS(); if (!installEvt && !ios) return '';
-  return `<div class="card install"><div class="row"><img src="icons/icon-192.png" alt="" width="44" height="44" style="border-radius:12px"><div class="grow"><b>Installa Cedolino</b><div class="small muted">Si apre come un'app, funziona anche offline e ricevi i PDF dal menu Condividi.</div></div></div>
+  return `<div class="card install"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="44" height="44" style="border-radius:12px"><div class="grow"><b>Installa Cedolino</b><div class="small muted">Si apre come un'app, funziona anche offline e ricevi i PDF dal menu Condividi.</div></div></div>
     <div class="btns" style="margin-top:12px"><button class="btn ghost" data-act="install-no">Non ora</button><button class="btn" data-act="install">${ic.download} Installa</button></div></div>`;
 }
 async function installa() {

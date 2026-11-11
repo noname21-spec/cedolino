@@ -67,7 +67,7 @@ let obStep = 0;
 function viewBenvenuto() {
   const P = S.profilo; const dots = `<div class="dots">${[0, 1, 2, 3, 4].map((i) => `<span class="${i === obStep ? 'on' : i < obStep ? 'done' : ''}"></span>`).join('')}</div>`;
   let h = `<div class="ob fade">${dots}`;
-  if (obStep === 0) h += `<div class="ob-hero"><img src="icons/icon.svg" alt="" width="84" height="84"><h1>Benvenuto in Cedolino</h1><p>Ti aiuto a capire e controllare le tue buste paga, in parole semplici.</p></div>
+  if (obStep === 0) h += `<div class="ob-hero"><img src="icons/icon.svg?v=2" alt="" width="84" height="84"><h1>Benvenuto in Cedolino</h1><p>Ti aiuto a capire e controllare le tue buste paga, in parole semplici.</p></div>
     <div class="card">${[[ic.calc, 'Quanto prendi davvero', 'Calcolo il netto dal tuo contratto e dai turni.'], [ic.check, 'Controllo delle buste', 'Carichi il PDF, ti dico se i conti tornano.'], [ic.bag, 'I tuoi lavori in ordine', 'Contratti, documenti, ferie, TFR e NASpI.']].map(([i, t, p]) => `<div class="chk ok"><div class="dot">${i}</div><div><b>${t}</b><p>${p}</p></div></div>`).join('')}</div>
     <button class="btn block" data-act="ob-next">Iniziamo</button><div class="row" style="justify-content:center;gap:18px;margin-top:10px"><button class="link" data-act="import">Ho un backup</button><button class="link" data-act="ob-skip">Salta</button></div><p class="note" style="text-align:center">I dati restano sul tuo telefono.</p>`;
   if (obStep === 1) h += `<h2 class="ob-t">Come ti chiami?</h2><p class="muted">Lo uso solo per salutarti e per firmare i messaggi all'ufficio paghe.</p>
@@ -295,7 +295,7 @@ async function avvisaSeServe() {
   if (!urg.length) return;
   S.notificato = oggi; save({ noSync: true });
   const body = urg.slice(0, 3).map((t) => '• ' + t.t).join('\n');
-  try { const reg = navigator.serviceWorker && (await navigator.serviceWorker.getRegistration()); if (reg) reg.showNotification('Cedolino', { body, icon: 'icons/icon-192.png', tag: 'cedolino-prom' }); else new Notification('Cedolino', { body, icon: 'icons/icon-192.png' }); } catch (e) {}
+  try { const reg = navigator.serviceWorker && (await navigator.serviceWorker.getRegistration()); if (reg) reg.showNotification('Cedolino', { body, icon: 'icons/icon-192.png?v=2', tag: 'cedolino-prom' }); else new Notification('Cedolino', { body, icon: 'icons/icon-192.png?v=2' }); } catch (e) {}
 }
 
 /* ---- CV ---- */
