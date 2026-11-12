@@ -2,6 +2,11 @@
 /* ============ viste: elementi comuni ============ */
 const topbar = (title, sub, right = '', back = '') => `<div class="top">${back ? `<a class="iconbtn back" href="${back}" aria-label="Indietro">${ic.back}</a>` : ''}<h1>${title}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>${right}</div>`;
 const gearBtn = `<a class="iconbtn" href="#impostazioni" aria-label="Impostazioni">${ic.gear}</a>`;
+function accountBtn() {
+  const m = (sbUser && sbUser.user_metadata) || {};
+  if (sbUser) return `<button class="iconbtn avatar" data-act="account" aria-label="Il tuo account">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" alt="" referrerpolicy="no-referrer">` : esc(((m.full_name || sbUser.email || '?')[0] || '?').toUpperCase())}</button>`;
+  return `<button class="iconbtn" data-act="login-google" aria-label="Accedi con Google">${GOOGLE_G}</button>`;
+}
 const jobAvatar = (j, size = 42) => `<div class="avatar" style="background:${j.colore || COLORI[0]};width:${size}px;height:${size}px">${esc(iniziali(j.azienda))}</div>`;
 const tool = (href, icon, cls, t, s) => `<a class="tool" href="${href}"><span class="ic ${cls}">${icon}</span><b>${t}</b><small>${s}</small></a>`;
 const vuoto = (icon, t, p, btn = '') => `<div class="card"><div class="empty"><div class="em">${icon}</div><b>${t}</b><p class="small">${p}</p>${btn}</div></div>`;
@@ -19,7 +24,7 @@ function cardTimbro() {
 function viewHome() {
   const P = S.profilo; const j = attivo(); const ym = curYM();
   const ora = new Date().getHours(); const saluto = ora < 13 ? 'Buongiorno' : ora < 18 ? 'Buon pomeriggio' : 'Buonasera';
-  let h = topbar(`${saluto}${P.nome ? `, ${esc(P.nome)}` : ''}`, cap(new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })), gearBtn);
+  let h = topbar(`${saluto}${P.nome ? `, ${esc(P.nome)}` : ''}`, cap(new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })), `<div class="row" style="gap:8px">${accountBtn()}${gearBtn}</div>`);
   if (!storageOK) h += `<div class="banner">Questo browser non salva i dati: installa l'app o esporta un backup.</div>`;
   h += cardInstalla();
   if (!S.lavori.length) {

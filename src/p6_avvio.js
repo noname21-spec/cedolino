@@ -3,6 +3,7 @@
 function viewImpostazioni() {
   const P = S.profilo; const lc = lockCfg();
   let h = topbar('Impostazioni', '', '', '#home');
+  h += `<div class="sec-title" style="margin-top:4px">Account</div>${cardAccount()}`;
   h += `<form data-form="profilo">
   <div class="sec-title">Tu</div><div class="card"><div class="fgrid"><label class="field"><span>Nome</span><input class="inp" name="nome" value="${esc(P.nome)}"></label><label class="field"><span>Data di nascita</span><input class="inp" type="date" name="nascita" value="${esc(P.nascita || '')}"></label></div></div>
   <div class="sec-title">Tasse</div><div class="card">
@@ -22,11 +23,6 @@ function viewImpostazioni() {
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
   h += `<div class="sec-title">Sicurezza</div><div class="card"><div class="row"><div class="ic b icbox">${ic.lock}</div><div class="grow"><b>Blocco con PIN</b><div class="small muted">${lc ? 'Attivo: i dati su questo telefono sono cifrati.' : 'Chiede un PIN all’apertura e cifra i dati sul telefono.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${lc ? `<button class="btn ghost" data-act="pin-set">Cambia PIN</button><button class="btn danger" data-act="pin-del">Togli</button>` : `<button class="btn" data-act="pin-set">${ic.lock} Imposta un PIN</button>`}</div></div>`;
-  const ultimo = S.sync.last ? new Date(S.sync.last).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
-  h += `<div class="sec-title">Sincronizzazione</div><div class="card"><div class="row"><div class="ic g icbox">${ic.cloud}</div><div class="grow"><b>Su tutti i tuoi dispositivi</b><div class="small muted">${!S.sync.on ? 'Copia cifrata dei dati nel tuo account Google, come in Conto di Casa.' : sbUser ? `Collegato come ${esc(sbUser.email || 'utente')}${ultimo ? ` · ultima: ${ultimo}` : ''}` : 'Attiva: accedi con Google per completare.'}</div></div></div>
-    ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
-    <div class="btns" style="margin-top:12px">${!S.sync.on ? `<button class="btn" data-act="sync-on">${ic.cloud} Attiva</button>` : !sbUser ? `<button class="btn" data-act="sync-login">Accedi con Google</button><button class="btn ghost" data-act="sync-off">Disattiva</button>` : `<button class="btn" data-act="sync-now">Sincronizza ora</button><button class="btn ghost" data-act="sync-logout">Esci</button>`}</div>
-    <p class="note">I dati vengono cifrati sul telefono con una frase segreta che conosci solo tu: senza, nessuno può leggerli. I PDF restano sul dispositivo.</p></div>`;
   const nb = S.buste.filter((b) => b.netto).length, inv = S.buste.filter((b) => b.cdc).length;
   h += `<div class="sec-title">Conto di Casa</div><div class="card"><div class="row"><div class="ic a icbox">${ic.link}</div><div class="grow"><b>Stipendio come entrata</b><div class="small muted">Ogni netto finisce in Conto di Casa nel giorno in cui arriva lo stipendio. ${inv ? `${inv} buste già inviate.` : ''}</div></div></div>
     <label class="check"><input type="checkbox" data-act="cdc-auto" ${S.cdc.auto ? 'checked' : ''}><span class="switch"></span><span class="grow">Invia automaticamente ogni nuova busta</span></label>
@@ -44,16 +40,20 @@ function viewImpostazioni() {
 
 /* ============ sincronizzazione (Supabase, cifrata) ============ */
 const SB_URL = 'https://nesozulkxioahnqfgqvt.supabase.co', SB_KEY = 'sb_publishable_YZne7hPWdSltL6C-Ffbusg_w5dZAISb';
-let sb = null, sbUser = null, syncStato = '', syncBusy = false;
+let sb = null, sbUser = null, syncStato = '', syncBusy = false, appenaEntrato = false;
 async function sbInit() {
   if (sb) return sb;
   try {
     if (!window.supabase) await loadScript('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js');
     sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, storageKey: 'cedolino-auth', detectSessionInUrl: false, flowType: 'pkce' } });
     const qs = new URLSearchParams(location.search);
-    if (qs.get('code')) { try { await sb.auth.exchangeCodeForSession(qs.get('code')); } catch (e) {} history.replaceState(null, '', location.pathname + (location.hash || '#impostazioni')); }
+    if (qs.get('code')) {
+      try { await sb.auth.exchangeCodeForSession(qs.get('code')); appenaEntrato = true; } catch (e) { syncStato = 'Accesso con Google non completato: riprova.'; }
+      let rit = ''; try { rit = sessionStorage.getItem('cedolino.ritorno') || ''; sessionStorage.removeItem('cedolino.ritorno'); } catch (e) {}
+      history.replaceState(null, '', location.pathname + (rit || location.hash || '#home'));
+    } else if (qs.get('error_description')) { syncStato = 'Accesso con Google non riuscito: ' + qs.get('error_description'); history.replaceState(null, '', location.pathname + '#impostazioni'); }
     const { data } = await sb.auth.getSession(); sbUser = data.session ? data.session.user : null;
-    sb.auth.onAuthStateChange((_e, s) => { const was = sbUser; sbUser = s ? s.user : null; if (sbUser && !was) syncNow(); if (route() === 'impostazioni') render(); });
+    sb.auth.onAuthStateChange((_e, s) => { const was = sbUser; sbUser = s ? s.user : null; if (sbUser && !was && S.sync.on) syncNow(true); if (!!was !== !!sbUser && ['impostazioni', 'home'].includes(route()) && !sheetStack.length) render(); });
     return sb;
   } catch (e) { syncStato = 'Il servizio di sincronizzazione non è raggiungibile da qui.'; sb = null; return null; }
 }
@@ -91,25 +91,66 @@ async function syncNow(silenzioso) {
     S.sync.last = Date.now(); syncStato = ''; save({ noSync: true });
     if (prima !== JSON.stringify([S.lavori, S.buste, S.turni, S.cu]) || route() === 'impostazioni') render();
     if (!silenzioso) toast('Sincronizzato');
+    syncBusy = false; return true;
   } catch (e) { syncStato = e.message === 'frase' ? 'La frase segreta non corrisponde a quella usata sugli altri dispositivi.' : 'Sincronizzazione non riuscita: riprova più tardi.'; if (!silenzioso) toast(syncStato); if (route() === 'impostazioni') render(); }
-  syncBusy = false;
+  syncBusy = false; return false;
 }
-function syncAttiva() {
-  const sh = openSheet(`<h3>Sincronizzazione</h3><p class="lead">Scegli una frase segreta (almeno 8 caratteri). Cifra i tuoi dati prima che lascino il telefono: usa la stessa su ogni dispositivo. Se la dimentichi, la copia online non si può più leggere.</p>
-    <form><label class="field"><span>Frase segreta</span><input class="inp" type="password" name="p1" minlength="8" required autocomplete="new-password"></label><label class="field"><span>Ripeti</span><input class="inp" type="password" name="p2" minlength="8" required autocomplete="new-password"></label>
-    <div class="btns"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Continua con Google</button></div></form>`);
-  sh.addEventListener('click', (e) => { if (e.target.closest('[data-x="cancel"]')) closeSheet(); });
-  $('form', sh).addEventListener('submit', async (e) => {
-    e.preventDefault(); const f = e.target; if (f.p1.value !== f.p2.value) { toast('Le due frasi non coincidono'); return; }
-    S.sync = { on: true, pass: f.p1.value }; save({ noSync: true }); closeSheet(); await syncLogin();
-  });
+const nomeUtente = () => { const m = (sbUser && sbUser.user_metadata) || {}; return m.given_name || (m.full_name || m.name || '').split(' ')[0] || ''; };
+const sitoUfficiale = () => /github\.io$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
+function cardAccount() {
+  if (!sbUser) return `<div class="card"><div class="row"><div class="ic b icbox">${ic.user}</div><div class="grow"><b>Accedi con Google</b><div class="small muted">Per ritrovare buste, lavori e turni su tutti i tuoi dispositivi e collegare Conto di Casa.</div></div></div>
+    ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
+    <button class="btn google block" style="margin-top:12px" data-act="login-google">${GOOGLE_G} Accedi con Google</button>
+    <p class="note">Non serve per usare l'app: senza account i dati restano solo su questo telefono.</p></div>`;
+  const m = sbUser.user_metadata || {}; const ultimo = S.sync.last ? new Date(S.sync.last).toLocaleString('it-IT', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : null;
+  return `<div class="card"><div class="row"><div class="avatar big">${m.avatar_url ? `<img src="${esc(m.avatar_url)}" alt="" referrerpolicy="no-referrer">` : esc(((m.full_name || sbUser.email || '?')[0]).toUpperCase())}</div><div class="grow"><b>${esc(m.full_name || m.name || 'Account Google')}</b><div class="small muted">${esc(sbUser.email || '')}</div></div></div>
+    <div class="chk ${S.sync.on ? 'ok' : 'info'}" style="margin-top:12px"><div class="dot">${ic.cloud}</div><div><b>${S.sync.on ? 'Sincronizzazione attiva' : 'Sincronizzazione spenta'}</b><p>${S.sync.on ? `Dati cifrati e allineati su tutti i dispositivi${ultimo ? ` · ultima: ${ultimo}` : ''}.` : 'Accendila per avere gli stessi dati sul telefono e sul computer.'}</p></div></div>
+    ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
+    <div class="btns" style="margin-top:12px">${S.sync.on ? `<button class="btn" data-act="sync-now">${ic.cloud} Sincronizza ora</button><button class="btn ghost" data-act="sync-off">Spegni</button>` : `<button class="btn" data-act="sync-on">${ic.cloud} Accendi la sincronizzazione</button>`}</div>
+    <button class="link" style="margin-top:12px" data-act="sync-logout">Esci dall'account</button>
+    <p class="note">I dati vengono cifrati sul telefono con una frase segreta che conosci solo tu. I PDF restano sul dispositivo.</p></div>`;
 }
-async function syncLogin() {
-  await sbInit(); if (!sb) { toast(syncStato || 'Servizio non disponibile'); render(); return; }
-  if (sbUser) { syncNow(); return; }
+async function loginGoogle() {
+  if (sbUser) { return S.sync.on ? accountSheet() : offriSync(); }
+  if (!sitoUfficiale()) {
+    const sh = openSheet(`<h3>Accedi dall'app</h3><p class="lead">L'accesso con Google funziona nell'app pubblicata sul sito. Aprila da lì (e installala): i dati di questa anteprima puoi portarli con un backup.</p><div class="btns"><button class="btn ghost" data-x="1">Chiudi</button><a class="btn" href="https://noname21-spec.github.io/cedolino/" target="_blank" rel="noopener">Apri Cedolino</a></div>`);
+    sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); }); return;
+  }
+  if (!navigator.onLine) { toast('Serve la connessione a Internet per accedere'); return; }
+  await sbInit(); if (!sb) { toast(syncStato || 'Accesso non disponibile in questo momento'); return; }
+  if (sbUser) { return S.sync.on ? accountSheet() : offriSync(); }
+  try { sessionStorage.setItem('cedolino.ritorno', location.hash || '#home'); } catch (e) {}
   const back = location.origin + location.pathname.replace(/index\.html$/, '');
-  const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: back } });
-  if (error) { syncStato = 'Accesso non riuscito: ' + error.message; render(); }
+  const { error } = await sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: back, queryParams: { prompt: 'select_account' } } });
+  if (error) { syncStato = 'Accesso non riuscito: ' + error.message; toast(syncStato); render(); }
+}
+function accountSheet() {
+  const sh = openSheet(`<h3>Il tuo account</h3>${cardAccount()}<button class="btn ghost block" data-x="1">Chiudi</button>`);
+  sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); else if (e.target.closest('[data-act]')) closeSheet(); });
+}
+async function offriSync() {
+  if (!sbUser) return loginGoogle();
+  let esiste = false; try { const { data } = await sb.from('cedolino_data').select('user_id').eq('user_id', sbUser.id).maybeSingle(); esiste = !!data; } catch (e) {}
+  const nome = nomeUtente();
+  const sh = openSheet(`<h3>${appenaEntrato ? `Ciao${nome ? ' ' + esc(nome) : ''}, sei dentro` : 'Sincronizzazione'}</h3>
+    <p class="lead">${esiste ? 'Su questo account ci sono già i tuoi dati di Cedolino da un altro dispositivo. Scrivi la frase segreta che hai scelto lì: li scarico e da ora restano allineati.' : 'Scegli una frase segreta (almeno 8 caratteri): cifra i dati prima che lascino il telefono, così nessun altro può leggerli. Usa la stessa su ogni dispositivo e non perderla.'}</p>
+    <form><label class="field"><span>Frase segreta</span><input class="inp" type="password" name="p1" minlength="8" required autocomplete="${esiste ? 'current-password' : 'new-password'}"></label>${esiste ? '' : '<label class="field"><span>Ripeti</span><input class="inp" type="password" name="p2" minlength="8" required autocomplete="new-password"></label>'}
+    <p class="banner" data-err style="display:none;margin:0 0 12px"></p>
+    <div class="btns"><button type="button" class="btn ghost" data-x="1">Non ora</button><button class="btn" type="submit">${ic.cloud} ${esiste ? 'Scarica i dati' : 'Accendi'}</button></div></form>`);
+  appenaEntrato = false;
+  const err = (t) => { const el = $('[data-err]', sh); el.textContent = t; el.style.display = ''; };
+  sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) { closeSheet(); render(); } });
+  $('form', sh).addEventListener('submit', async (e) => {
+    e.preventDefault(); const f = e.target;
+    if (!esiste && f.p1.value !== f.p2.value) return err('Le due frasi non coincidono');
+    const bt = $('button[type=submit]', sh); bt.disabled = true; bt.textContent = 'Un attimo…';
+    S.sync = { on: true, pass: f.p1.value }; save({ noSync: true });
+    const ok = await syncNow(true);
+    if (!ok) { S.sync = { on: false, pass: '' }; save({ noSync: true }); bt.disabled = false; bt.innerHTML = `${ic.cloud} Riprova`; return err(syncStato || 'Non sono riuscito a sincronizzare: riprova.'); }
+    closeSheet(); syncStato = '';
+    if (route() === 'benvenuto' && (S.lavori.length || S.buste.length)) { S.onboarded = true; save({ noSync: true }); location.hash = '#home'; }
+    render(); toast(esiste ? 'Dati scaricati: ora sono allineati' : 'Sincronizzazione accesa');
+  });
 }
 
 /* ============ Conto di Casa ============ */
@@ -120,7 +161,7 @@ async function inviaCdc(b, silenzioso) {
   const put = (d) => { d = d && typeof d === 'object' ? d : {}; d.months = d.months || {}; Object.keys(d.months).forEach((k) => { d.months[k] = (d.months[k] || []).filter((x) => x.id !== item.id); }); (d.months[date.slice(0, 7)] = d.months[date.slice(0, 7)] || []).push(item); if (Array.isArray(d.deleted)) d.deleted = d.deleted.filter((x) => x !== item.id); if (d.profile && Array.isArray(d.profile.deleted)) d.profile.deleted = d.profile.deleted.filter((x) => x !== item.id); return d; };
   const dove = []; let bloccato = false;
   try { const raw = localStorage.getItem('contodicasa.v1'); if (raw) { const o = JSON.parse(raw); if (o && o.enc) bloccato = true; else { localStorage.setItem('contodicasa.v1', JSON.stringify(put(o))); dove.push('telefono'); } } } catch (e) {}
-  try { if (S.sync.on) await sbInit(); if (sb && sbUser) { const { data, error } = await sb.from('conto_di_casa_data').select('data').eq('user_id', sbUser.id).maybeSingle(); if (!error) { const up = await sb.from('conto_di_casa_data').upsert({ user_id: sbUser.id, data: put(data ? data.data : {}), updated_at: new Date().toISOString() }); if (!up.error) dove.push('account'); } } } catch (e) {}
+  try { if (S.sync.on || haSessione()) await sbInit(); if (sb && sbUser) { const { data, error } = await sb.from('conto_di_casa_data').select('data').eq('user_id', sbUser.id).maybeSingle(); if (!error) { const up = await sb.from('conto_di_casa_data').upsert({ user_id: sbUser.id, data: put(data ? data.data : {}), updated_at: new Date().toISOString() }); if (!up.error) dove.push('account'); } } } catch (e) {}
   if (dove.length) { b.cdc = { date, amount: item.amount, at: Date.now() }; save(); if (!silenzioso) toast(`Entrata di ${eur(item.amount)} del ${dateLabel(date)} inviata a Conto di Casa`); return true; }
   if (!silenzioso) {
     const sh = openSheet(`<h3>Non trovo Conto di Casa</h3><p class="lead">${bloccato ? 'Conto di Casa su questo telefono è protetto da PIN, quindi non posso scriverci direttamente.' : 'Su questo browser Conto di Casa non ha ancora dati, oppure è su un altro sito.'}</p><div class="chk info"><div class="dot">${ic.info}</div><div><b>Per collegarle</b><p>Accedi con lo stesso account Google sia in Conto di Casa sia qui (Impostazioni → Sincronizzazione): da quel momento le entrate arrivano ovunque. In alternativa apri Conto di Casa almeno una volta da questo telefono, dallo stesso sito di Cedolino.</p></div></div><button class="btn block" style="margin-top:12px" data-x="ok">Ho capito</button>`);
@@ -279,8 +320,8 @@ const actions = {
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },
   async 'pin-del'() { if (!(await ask('Togliere il PIN?', 'I dati su questo telefono non saranno più cifrati.', 'Togli PIN'))) return; localStorage.removeItem(LOCK_KEY); lockKey = null; save({ noSync: true }); render(); toast('PIN rimosso'); },
-  'sync-on'() { syncAttiva(); }, 'sync-login'() { if (!S.sync.pass) return syncAttiva(); syncLogin(); }, 'sync-now'() { syncNow(); },
-  async 'sync-logout'() { try { await sb.auth.signOut(); } catch (e) {} sbUser = null; render(); toast('Disconnesso: i dati restano su questo telefono'); },
+  'sync-on'() { offriSync(); }, 'sync-login'() { loginGoogle(); }, 'login-google'() { loginGoogle(); }, account() { accountSheet(); }, 'sync-now'() { syncNow(); },
+  async 'sync-logout'() { if (!(await ask('Uscire dall\u2019account?', 'I dati restano su questo telefono, ma smettono di sincronizzarsi.', 'Esci'))) return; try { await sb.auth.signOut(); } catch (e) {} sbUser = null; S.sync = { on: false, pass: '' }; save({ noSync: true }); closeSheet(); render(); toast('Sei uscito: i dati restano su questo telefono'); },
   'sync-off'() { S.sync = { on: false, pass: '' }; save({ noSync: true }); render(); },
   export() {
     const data = JSON.stringify(S, null, 1); const name = `cedolino-backup-${todayISO()}.json`;
@@ -347,11 +388,17 @@ async function boot() {
     try { const raw = localStorage.getItem(KEY); if (raw) { const o = JSON.parse(raw); if (o && !o.enc) S = normalizza(o); } } catch (e) { storageOK = false; }
   }
   applyTheme();
-  if (!S.onboarded && !S.lavori.length && (!location.hash || location.hash === '#home')) location.hash = '#benvenuto';
+  if (!S.onboarded && !S.lavori.length && (!location.hash || location.hash === '#home')) history.replaceState(null, '', location.pathname + location.search + '#benvenuto');
   if (new URLSearchParams(location.search).get('app') === 'pwa') history.replaceState(null, '', location.pathname + location.hash);
   lastRoute = route(); render();
   registraSW(); statoRete(); if (isStandalone()) proteggiDati();
-  if (S.sync.on || new URLSearchParams(location.search).get('code')) sbInit().then(() => { if (sbUser) syncNow(true); });
+  const qs = new URLSearchParams(location.search);
+  if (S.sync.on || haSessione() || qs.get('code') || qs.get('error_description')) sbInit().then(() => {
+    if (!sbUser) { if (syncStato) render(); return; }
+    if (!S.profilo.nome && nomeUtente()) { S.profilo.nome = nomeUtente(); save({ noSync: true }); }
+    lastRoute = route(); render();
+    if (S.sync.on && S.sync.pass) syncNow(true); else if (appenaEntrato) setTimeout(() => { if (!sheetStack.length) offriSync(); }, 350);
+  });
   avvisaSeServe();
   setInterval(() => { if (S.timbro && ['home', 'turni'].includes(route()) && !sheetStack.length) render(); }, 60000);
 }
