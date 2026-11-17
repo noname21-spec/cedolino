@@ -503,18 +503,19 @@ function loadScript(src) { return new Promise((res, rej) => { if ($(`script[src=
 function pdfLib() { const l = window.pdfjsLib || window['pdfjs-dist/build/pdf']; if (l && !l.__cfg) { try { l.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'; } catch (e) {} l.__cfg = true; } return l; }
 async function pdfText(blob) {
   const lib = pdfLib(); if (!lib) throw new Error('Lettore PDF non disponibile');
-  const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise; const lines = []; const items = [];
-  for (let p = 1; p <= Math.min(pdf.numPages, 6); p++) {
-    const page = await pdf.getPage(p); const tc = await page.getTextContent(); const rows = {};
+  const pdf = await lib.getDocument({ data: await blob.arrayBuffer() }).promise; const pagine = []; const items = [];
+  // leggo tutte le pagine, senza limiti
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p); const tc = await page.getTextContent(); const rows = {}; const lines = [];
     for (const it of tc.items) {
       if (!it.str || !it.str.trim()) continue; const y = Math.round(it.transform[5] / 3);
       (rows[y] = rows[y] || []).push({ x: it.transform[4], s: it.str });
-      // separo i pezzi di testo che contengono più parole/importi distanti (alcuni PDF li uniscono)
       items.push({ p, x: it.transform[4], y: it.transform[5], w: it.width || it.str.length * 4, s: it.str.trim() });
     }
     Object.keys(rows).map(Number).sort((a, b) => b - a).forEach((y) => lines.push(rows[y].sort((a, b) => a.x - b.x).map((r) => r.s).join(' ').replace(/\s+/g, ' ').trim()));
+    pagine.push(lines.join('\n')); page.cleanup();
   }
-  const text = lines.join('\n'); ultimoLayout = { text, items }; return text;
+  const text = pagine.join('\n'); ultimoLayout = { text, items, pagine }; pdf.destroy(); return text;
 }
 let ultimoLayout = null;
 let ocrWorkerP = null; let ocrProg = null;
@@ -526,22 +527,33 @@ async function ocrWorker() {
   return ocrWorkerP;
 }
 async function ocrText(img, onProg) { const w = await ocrWorker(); ocrProg = onProg; try { const r = await w.recognize(img); return r.data.text; } finally { ocrProg = null; } }
-/** PDF scansionato (solo immagini): disegno le pagine e leggo il testo con l'OCR */
-async function pdfOCR(blob, onProg) {
-  const pdf = await pdfLib().getDocument({ data: await blob.arrayBuffer() }).promise; const n = Math.min(pdf.numPages, 4); let out = '';
-  for (let i = 1; i <= n; i++) {
-    const page = await pdf.getPage(i); const vp = page.getViewport({ scale: 2.2 });
+/** Pagine scansionate (solo immagini): le disegno e leggo il testo con l'OCR. Nessun limite di pagine. */
+async function pdfOCR(blob, onProg, quali) {
+  const pdf = await pdfLib().getDocument({ data: await blob.arrayBuffer() }).promise;
+  const lista = quali && quali.length ? quali : Array.from({ length: pdf.numPages }, (_, k) => k + 1); const out = {};
+  for (let k = 0; k < lista.length; k++) {
+    const i = lista[k]; const page = await pdf.getPage(i); const vp = page.getViewport({ scale: 2.2 });
     const cv = document.createElement('canvas'); cv.width = vp.width; cv.height = vp.height;
     await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
-    out += (await ocrText(cv, (x) => onProg && onProg((i - 1 + x) / n, `Pagina ${i} di ${n}`))) + '\n';
+    out[i] = await ocrText(cv, (x) => onProg && onProg((k + x) / lista.length, `Pagina ${k + 1} di ${lista.length}`));
+    cv.width = cv.height = 0; page.cleanup();
   }
-  return out;
+  pdf.destroy(); return out;
 }
 async function leggiFile(file, onProg) {
   if (file.type === 'application/pdf' || /\.pdf$/i.test(file.name)) {
-    const t = await pdfText(file);
-    if (t.replace(/\s/g, '').length >= 150) return t;
-    try { if (onProg) onProg(0, 'È una scansione: riconosco il testo…'); const o = await pdfOCR(file, onProg); return o.trim() ? o : t; } catch (e) { return t; }
+    const t = await pdfText(file); const pagine = (ultimoLayout && ultimoLayout.pagine) || [t];
+    // pagine senza testo (scansioni, anche solo alcune in mezzo a pagine normali): le leggo con l'OCR
+    const vuote = pagine.map((x, k) => (x.replace(/\s/g, '').length < 60 ? k + 1 : 0)).filter(Boolean);
+    if (!vuote.length) return t;
+    const tutte = vuote.length === pagine.length;
+    try {
+      if (onProg) onProg(0, tutte ? 'È una scansione: riconosco il testo…' : `${vuote.length} pagin${vuote.length === 1 ? 'a è una scansione' : 'e sono scansioni'}: le leggo…`);
+      const o = await pdfOCR(file, onProg, vuote);
+      const unito = pagine.map((x, k) => (o[k + 1] && o[k + 1].trim() ? o[k + 1] : x)).join('\n');
+      if (!tutte && ultimoLayout) ultimoLayout.text = unito; // la busta continua a usare le posizioni delle pagine con testo
+      return unito.trim() ? unito : t;
+    } catch (e) { return t; }
   }
   if (file.type.startsWith('image/')) return ocrText(file, onProg);
   if (file.type.startsWith('text/') || /\.(txt|csv|ics)$/i.test(file.name)) return file.text();
