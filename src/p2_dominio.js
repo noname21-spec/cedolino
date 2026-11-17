@@ -72,7 +72,8 @@ function stima(j, ym) {
   const aum5 = (c.aumentiRinnovo || 0) * (chiamata ? 0 : quota + (c.base ? aggiuntiva / c.base : 0));
   let addReg = 0, addCom = 0;
   if (j.inizio && j.inizio < `${y}-01-01`) { const Rprev = y === 2026 && red25 != null ? red25 : Rannuo; const ra = E.rateAddizionali(ym, Rprev, Rannuo, P); addReg = ra.reg; addCom = ra.com; }
-  const res = E.calcolaMese({ ym, ordinario, aggiuntiva, magg15: v ? v.magg15 : 0, aum5, Rannuo, contribRate: cr, td: isTD(j), flat15ok, flat5ok, addRegRata: addReg, addComRata: addCom, giorniMese: giorniAttivi });
+  const giorniAnno = giorniLavoroAnno(j, y);
+  const res = E.calcolaMese({ ym, ordinario, aggiuntiva, magg15: v ? v.magg15 : 0, aum5, Rannuo, contribRate: cr, td: isTD(j), flat15ok, flat5ok, addRegRata: addReg, addComRata: addCom, giorniMese: giorniAttivi, giorniAnno });
   const voci = [];
   if (base) voci.push([giorniAttivi < dim ? `Retribuzione (${giorniAttivi}/${dim} gg)` : 'Retribuzione ordinaria', base]);
   if (v) {
@@ -87,7 +88,7 @@ function stima(j, ym) {
   }
   if (disponibilita) voci.push(['Indennità di disponibilità', disponibilita]);
   aggVoci.forEach((a) => voci.push(a));
-  return { j, ym, c, base, v, cl, vym, aggiuntiva, ordinario, Rannuo, res, voci, giorniAttivi, chiamata };
+  return { j, ym, c, base, v, cl, vym, aggiuntiva, ordinario, Rannuo, giorniAnno, res, voci, giorniAttivi, chiamata };
 }
 
 /* ---- ferie e permessi: unità di misura ---- */
@@ -105,6 +106,12 @@ const ferieOreDi = (b, j) => (b.ferieRes == null ? null : unitaFerie(b, j) === '
 const permTot = (b) => { const v = [b.rolRes, b.exFestRes, b.permessiRes].filter((x) => x != null); return v.length ? v.reduce((a, x) => a + x, 0) : null; };
 const fmtFerie = (gg, og) => `${num(gg, 1)} gg${og > 0 ? ` · ${num(gg * og, 1)} h` : ''}`;
 
+/** giorni di lavoro di un rapporto in un anno (servono per detrazioni e trattamento integrativo) */
+function giorniLavoroAnno(j, y) {
+  if (!j || !j.inizio) return 365;
+  const a = j.inizio > `${y}-01-01` ? j.inizio : `${y}-01-01`; const f = j.fine && j.fine < `${y}-12-31` ? j.fine : `${y}-12-31`;
+  if (f < a) return 0; return Math.round((new Date(f) - new Date(a)) / 864e5) + 1;
+}
 /** Saldi ferie/permessi stimati a una data (default oggi). Le ferie sono in giorni (ferieOre in ore), i permessi in ore. */
 function saldi(j, alla) {
   if (!j || j.tipo === 'chiamata') return null;
@@ -165,7 +172,7 @@ function controlla(b) {
   }
   if (b.lordo && b.netto && st) {
     const red25 = toNum(P.reddito2025);
-    const r = E.calcolaMese({ ym: b.ym, ordinario: isAgg ? 0 : b.lordo, aggiuntiva: isAgg ? b.lordo : 0, magg15: st.v ? st.v.magg15 : 0, aum5: st.c.aumentiRinnovo || 0, Rannuo: st.Rannuo, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000), addRegRata: b.addReg ?? st.res.addRegionale, addComRata: b.addCom ?? st.res.addComunale, giorniMese: st.giorniAttivi });
+    const r = E.calcolaMese({ ym: b.ym, ordinario: isAgg ? 0 : b.lordo, aggiuntiva: isAgg ? b.lordo : 0, magg15: st.v ? st.v.magg15 : 0, aum5: st.c.aumentiRinnovo || 0, Rannuo: st.Rannuo, giorniAnno: st.giorniAnno, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000), addRegRata: b.addReg ?? st.res.addRegionale, addComRata: b.addCom ?? st.res.addComunale, giorniMese: st.giorniAttivi });
     const diff = b.netto - r.netto; const tol = Math.max(25, r.netto * 0.04);
     if (Math.abs(diff) <= tol) out.push({ s: 'ok', t: 'Netto in linea con la stima', p: `Stima ${eur(r.netto)}, in busta ${eur(b.netto)} (differenza ${eur(diff)}).` });
     else out.push({ s: diff < 0 ? 'warn' : 'info', t: diff < 0 ? 'Netto più basso della stima' : 'Netto più alto della stima', p: `Stima ${eur(r.netto)}, in busta ${eur(b.netto)} (${diff > 0 ? '+' : ''}${eur(diff)}). Cause frequenti: conguaglio IRPEF, addizionali dell'anno prima, anticipi o quote sindacali, arretrati, bonus fiscali non ancora applicati.${b.ym.endsWith('-12') ? ' A dicembre il conguaglio di fine anno può cambiare molto il netto.' : ''}`, lettera: diff < 0 ? `Il netto (${eur(b.netto)}) mi sembra più basso di quanto mi aspettavo (circa ${eur(r.netto)}): potreste indicarmi quali trattenute hanno inciso?` : null });
@@ -178,11 +185,36 @@ function controlla(b) {
   if (b.testo && st) {
     const T = b.testo; const R = st.Rannuo; const red25 = toNum(P.reddito2025);
     if (R <= 20000 && !/esent|cuneo|207\/?2024|non\s*imp|l\.?\s*207|art\.?\s*1\s*c\.?\s*4/i.test(T)) out.push({ s: 'info', t: 'Somma esente (taglio cuneo) non trovata', p: `Con un reddito previsto sotto i 20.000 € spetta una somma esente del ${R <= 8500 ? '7,1' : R <= 15000 ? '5,3' : '4,8'}% del reddito. Nella busta non trovo la voce: a volte ha un nome diverso.`, lettera: 'Non trovo in busta la somma esente prevista dal taglio del cuneo fiscale (L. 207/2024): mi viene riconosciuta?' });
-    if (R <= 15000 && !/integrativ|t\.?\s*i\.?\s*r|ex\s*bonus|bonus\s*100|l\.?\s*21\/2020/i.test(T)) out.push({ s: 'info', t: 'Trattamento integrativo non trovato', p: 'Con questo reddito di solito spettano circa 100 € al mese (ex bonus Renzi). Non trovo la voce nel testo della busta.', lettera: 'Non trovo in busta il trattamento integrativo (ex bonus 100 €): mi spetta con il mio reddito?' });
     if (st.cl && (st.cl.festive + st.cl.domenicali + st.cl.notturne) > 0 && (red25 == null || red25 <= 40000) && !/sostitut|detass|15\s*%/i.test(T)) out.push({ s: 'info', t: 'Detassazione 15% non trovata', p: 'Nel 2026 le maggiorazioni per lavoro festivo, notturno e nel giorno di riposo sono tassate al 15% (fino a 1.500 €) se il reddito 2025 non supera 40.000 €.', lettera: 'Per le maggiorazioni di festivi e domeniche non vedo applicata l’imposta sostitutiva del 15% prevista per il 2026: è corretto?' });
   }
+  out.push(...controllaTI(b, j, st));
   out.push(...controllaFerie(b, j));
   if (!out.length) out.push({ s: 'info', t: 'Pochi dati per il controllo', p: 'Inserisci almeno lordo, netto e contributi (o carica il PDF) per avere un controllo completo.' });
+  return out;
+}
+
+const TI_RE = /tratt\w*\.?\s*integrativ|\bt\.?\s?i\.?\s?r\.?\b|ex\s*bonus\s*(?:renzi|100)|bonus\s*100|\bl\.?\s*21\s*\/\s*2020/i;
+/** Trattamento integrativo (ex bonus 100 €): spetta solo se l'IRPEF lorda supera la detrazione meno 75 € → chi è nella no tax area non lo riceve */
+function controllaTI(b, j, st) {
+  const out = []; if (!st || !st.res || !st.res.anno || st.chiamata && !b.lordo) return out;
+  const A = st.res.anno; if (A.R > 28000) return out;
+  const conosco = b.ti != null || b.tiRecupero != null || !!b.testo; if (!conosco) return out;
+  const ricevuto = b.ti != null ? b.ti : (b.testo && TI_RE.test(b.testo.replace(/recuper\w*[^\n]{0,30}integrativ\w*/gi, '')) ? null : 0); // null = c'è la voce ma non so l'importo
+  const ha = ricevuto == null || ricevuto > 0.5;
+  const conti = `Per questo lavoro nel ${b.ym.slice(0, 4)} stimo un reddito di ${eur0(A.R)} in ${A.giorni} giorni: IRPEF lorda ${eur0(A.irpefLorda)}, detrazione per lavoro dipendente ${eur0(A.detrazione)}${isTD(j) && A.R <= 15000 ? ' (a tempo determinato almeno 1.380 €)' : ''}.`;
+  const mese = st.res.trattamentoIntegrativo;
+  if (A.R <= 15000 && A.irpefLorda <= A.soglia) {
+    // no tax area: niente IRPEF e niente trattamento integrativo
+    if (ha) out.push({ s: 'warn', t: 'Trattamento integrativo che non ti spetta', p: `Sei nella no tax area: l'IRPEF lorda non supera la detrazione meno 75 € (${eur0(A.soglia)}), quindi il trattamento integrativo non spetta. ${conti} Quello ricevuto${ricevuto ? ` (${eur(ricevuto)} in questa busta)` : ''} di solito viene trattenuto a fine rapporto o a dicembre, altrimenti lo restituisci col 730: meglio non spenderlo.`, lettera: `Nella busta di ${meseDi(b.ym)} ricevo il trattamento integrativo${ricevuto ? ` (${eur(ricevuto)})` : ''}, ma con il mio reddito previsto per l'anno (circa ${eur0(A.R)}) l'imposta lorda non supera la detrazione per lavoro dipendente: credo di essere nella no tax area. Potete verificare, per evitare di doverlo restituire a conguaglio?` });
+    else out.push({ s: 'ok', t: 'Niente trattamento integrativo: corretto', p: `Sei nella no tax area: l'IRPEF lorda (${eur0(A.irpefLorda)}) non supera la detrazione meno 75 € (${eur0(A.soglia)}), quindi non paghi IRPEF e il bonus non spetta. ${conti}` });
+    if ((b.irpef || 0) > 5) out.push({ s: 'info', t: 'IRPEF trattenuta nella no tax area', p: `In busta ci sono ${eur(b.irpef)} di IRPEF, ma sull'anno non dovresti pagarne. Di solito la riavrai col conguaglio di fine rapporto o di dicembre, oppure col 730.` });
+    return out;
+  }
+  if (A.ti > 0) {
+    if (!ha) out.push({ s: 'info', t: 'Trattamento integrativo non trovato', p: `Con il reddito stimato ti spetterebbero circa ${eur(mese)} in questa busta (${eur0(A.ti)} sull'anno). ${conti} Non trovo la voce: a volte ha un nome diverso, oppure l'azienda lo dà a conguaglio.`, lettera: `Non trovo in busta il trattamento integrativo (ex bonus 100 €): con un reddito previsto di circa ${eur0(A.R)} dovrebbe spettarmi. Potete verificare?` });
+    else if (ricevuto != null && Math.abs(ricevuto - mese) > Math.max(15, mese * 0.25) && b.tipo === 'mensile') out.push({ s: 'info', t: 'Trattamento integrativo diverso dalla stima', p: `In busta ${eur(ricevuto)}, mi aspettavo circa ${eur(mese)}. Può dipendere dai giorni lavorati o dal reddito che l'azienda prevede per l'anno. ${conti}` });
+    else out.push({ s: 'ok', t: 'Trattamento integrativo presente', p: `${ricevuto != null ? eur(ricevuto) : 'La voce c’è'}; mi aspettavo circa ${eur(mese)} al mese. L'IRPEF lorda (${eur0(A.irpefLorda)}) supera la detrazione meno 75 € (${eur0(A.soglia)}), quindi ti spetta.` });
+  } else if (ha && A.R <= 28000) out.push({ s: 'warn', t: 'Trattamento integrativo forse non dovuto', p: `${conti} Con questi numeri il bonus non dovrebbe spettare: se a fine anno il reddito è questo, verrà recuperato.`, lettera: `In busta ricevo il trattamento integrativo, ma con un reddito previsto di circa ${eur0(A.R)} non mi sembra spettante: potete verificare?` });
   return out;
 }
 
@@ -265,7 +297,11 @@ function annoFiscale(y) {
         const st = stima(j, ym);
         if (bs.length) {
           bs.forEach((b) => { const contr = b.contributi ?? (b.lordo || 0) * cr / 100; r.reddito += b.imponibileFisc ?? Math.max(0, (b.lordo || 0) - contr); r.irpef += b.irpef ?? 0; });
-          if (st) { r.ti += st.res.trattamentoIntegrativo; r.esente += st.res.sommaEsente; }
+          bs.forEach((b) => {
+            const tiB = b.ti != null ? b.ti : b.testo ? (TI_RE.test(b.testo) && st ? st.res.trattamentoIntegrativo : 0) : st ? st.res.trattamentoIntegrativo : 0;
+            r.ti += tiB - (b.tiRecupero || 0);
+            r.esente += b.sommaEsente != null ? b.sommaEsente : st ? st.res.sommaEsente : 0;
+          });
           r.fonte.buste++;
         } else if (st) { r.reddito += st.res.imponibileFiscale; r.irpef += st.res.irpefNetta; r.ti += st.res.trattamentoIntegrativo; r.esente += st.res.sommaEsente; r.fonte.stime++; }
       }
@@ -346,7 +382,7 @@ const GLOSSARIO = [
     ['Quote sindacali / enti bilaterali', /sindac|ente\s*bil|e\.?bi|fondo\s*est|for\.?te|est\b/i, 'Piccole trattenute per il sindacato (se iscritto), l’ente bilaterale o l’assistenza sanitaria integrativa.'],
   ]],
   ['Bonus fiscali', [
-    ['Trattamento integrativo', /integrativ|t\.?i\.?r/i, 'L’ex "bonus Renzi": fino a 1.200 € l’anno (circa 100 € al mese) per redditi fino a 15.000 €, o in parte fino a 28.000 €.'],
+    ['Trattamento integrativo', /integrativ|t\.?i\.?r/i, 'L’ex "bonus Renzi": fino a 1.200 € l’anno (circa 100 € al mese) per redditi fino a 15.000 €, o in parte fino a 28.000 €. Spetta solo se l’IRPEF lorda supera la detrazione per lavoro dipendente meno 75 € (in proporzione ai giorni lavorati): chi è nella no tax area, cioè non paga IRPEF, non lo riceve. Se lo ricevi senza averne diritto, viene recuperato a conguaglio o col 730.'],
     ['Somma esente (taglio cuneo)', /esent|cuneo|207/i, 'Per redditi fino a 20.000 € ricevi una somma non tassata pari al 7,1%, 5,3% o 4,8% del reddito; tra 20.000 e 40.000 € è una detrazione extra fino a 1.000 €.'],
   ]],
   ['Ratei e altro', [
@@ -368,7 +404,7 @@ const TERMS = {
   naspi: ['NASpI', 'L’indennità di disoccupazione dell’INPS. Spetta se perdi il lavoro senza dimetterti (scadenza, licenziamento) e hai almeno 13 settimane di contributi negli ultimi 4 anni. Dura metà delle settimane lavorate e dal 6° mese scende del 3% al mese.'],
   conguaglio: ['Conguaglio e 730', 'Ogni datore di lavoro calcola le tasse come se fosse il tuo unico lavoro. Se nello stesso anno ne hai avuti più di uno, col 730 si rifanno i conti su tutto il reddito: a volte arriva un rimborso, a volte c’è da pagare.'],
   cu: ['Certificazione Unica', 'Il documento che il datore di lavoro ti consegna entro il 16 marzo con il reddito e le tasse dell’anno prima. Serve per il 730.'],
-  bonus: ['Bonus fiscali', 'Trattamento integrativo (fino a 100 € al mese sotto i 15.000 €) e somma esente del taglio del cuneo (sotto i 20.000 €): soldi in più in busta che non sono tassati.'],
+  bonus: ['Bonus fiscali', 'Trattamento integrativo (fino a 100 € al mese sotto i 15.000 €, ma solo se paghi IRPEF: non spetta nella no tax area) e somma esente del taglio del cuneo (sotto i 20.000 €, spetta anche nella no tax area): soldi in più in busta che non sono tassati.'],
   supplementare: ['Ore supplementari', 'Nel part-time sono le ore oltre il tuo orario e fino a 40 a settimana. Nel Commercio sono pagate il 35% in più.'],
   rmm: ['Retribuzione media', 'La media mensile delle retribuzioni con contributi degli ultimi 4 anni, su cui l’INPS calcola la NASpI.'],
   disponibilita: ['Indennità di disponibilità', 'Nel lavoro a chiamata con obbligo di risposta ti spetta il 20% della retribuzione per i periodi in cui resti a disposizione senza lavorare.'],

@@ -233,6 +233,9 @@ function parseBusta(text) {
     addCom: [/add(?:izionale|\.|\s)*\s*com/i, /imponib|progress/i],
     tfr: [/quota\s*t\.?f\.?r|t\.?f\.?r\.?\s*(?:mese|quota|maturat|del\s*mese|mensile)/i, /fondo|progress|anticip/i],
     oreExtra: [/supplementar|straordinar/i, /magg\.?\s*%?\s*$/i],
+    tiRecupero: [/(?:recuper\w*|restitu\w*|rest\.)\s*(?:del\s*)?(?:tratt\w*\.?\s*)?integrativ|(?:recuper\w*|restitu\w*)\s*(?:t\.?\s?i\.?\s?r\b|bonus|l\.?\s*21)/i, /progress/i],
+    ti: [/tratt\w*\.?\s*integrativ|\bt\.?\s?i\.?\s?r\.?\b|ex\s*bonus\s*(?:renzi|100)|\bl\.?\s*21\s*\/\s*2020|d\.?\s*l\.?\s*3\s*\/\s*2020/i, /progress|recuper|restitu|rest\./i],
+    sommaEsente: [/somma\s*(?:non\s*imponibile|esente)|esenzione\s*cuneo|cuneo\s*fiscale|l\.?\s*207\s*\/\s*2024|art\.?\s*1\s*c(?:omma|\.)?\s*4\b/i, /progress/i],
   };
   const lay = ultimoLayout && ultimoLayout.text === text ? ultimoLayout.items : null;
   const C = {}; // candidati per campo
@@ -303,6 +306,10 @@ function parseBusta(text) {
   pick('addReg', (v) => v >= 0 && v < 400); pick('addCom', (v) => v >= 0 && v < 300);
   pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
   pick('oreExtra', (v) => v > 0 && v <= 120);
+  pick('tiRecupero', (v) => Math.abs(v) > 0 && Math.abs(v) <= 1300);
+  pick('ti', (v) => v >= 0 && v <= 1300 && (!found.lordo || v < found.lordo * 0.9) && Math.abs(v) !== Math.abs(found.tiRecupero ?? -1));
+  pick('sommaEsente', (v) => v > 0 && v <= 1500 && (!found.lordo || v < found.lordo * 0.2));
+  if (found.tiRecupero != null) found.tiRecupero = Math.abs(found.tiRecupero);
   // ferie e permessi senza posizioni (foto, testo): tabelle riconosciute dalle intestazioni
   if (found.ferieRes == null && found.rolRes == null && found.exFestRes == null && found.permessiRes == null) ferieInBusta(leggiFerieTesto(L), found);
   const mesiRe = new RegExp(`\\b(${MESI.join('|')})\\s*[-/]?\\s*(20\\d{2})`, 'i');

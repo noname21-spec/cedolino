@@ -260,16 +260,19 @@
     const impAggIrpef = Math.max(0, impAgg - base5 * (agg / (lordo || 1)));
     const lordaOrd = perScaglioni(impOrdIrpef, sc, 12);
     const lordaAgg = perScaglioni(impAggIrpef, sc, 12);
-    let detrAnn = detrazioneLavoro(Rann, m.td);
+    // detrazione dell'anno: in proporzione ai giorni di lavoro dell'anno, con il minimo di 690 € (1.380 € a tempo determinato) sotto i 15.000 €
+    const gA = clamp(Number(m.giorniAnno) || 365, 1, 365);
+    let detrAnn = detrazioneLavoro(Rann, m.td) * gA / 365;
     if (Rann <= 15000) detrAnn = Math.max(detrAnn, detrazioneMinima(m.td));
-    const detr = ord > 0 ? detrAnn * giorniMese / 365 : 0;
+    const detr = ord > 0 ? detrAnn * giorniMese / gA : 0;
     const cu = cuneo(Rann, Rann);
     const ulteriore = ord > 0 ? cu.ulterioreDetrazione / 12 : 0;
     const irpefLordaTot = lordaOrd + lordaAgg;
     const irpefNetta = Math.max(0, irpefLordaTot - detr - ulteriore);
     const lordaAnnTI = irpefLorda(Rann, anno);
-    const tiAnn = trattamentoIntegrativo(Rann, lordaAnnTI, detrAnn, 365);
-    const ti = ord > 0 ? tiAnn * giorniMese / 365 : 0;
+    // trattamento integrativo: solo se l'imposta lorda supera la detrazione meno 75 € (in proporzione al periodo): chi è nella no tax area non lo riceve
+    const tiAnn = trattamentoIntegrativo(Rann, lordaAnnTI, detrAnn, gA);
+    const ti = ord > 0 ? tiAnn * giorniMese / gA : 0;
     const sommaEsente = cu.sommaEsentePct * (impOrd + impAgg);
     const addReg = Number(m.addRegRata) || 0, addCom = Number(m.addComRata) || 0;
     const netto = lordo - contributi - irpefNetta - sost - addReg - addCom + ti + sommaEsente;
@@ -277,6 +280,7 @@
       lordo, contributi, imponibileFiscale: impOrd + impAgg, irpefLorda: irpefLordaTot,
       detrazioni: detr + ulteriore, irpefNetta, sostitutive: sost, trattamentoIntegrativo: ti,
       sommaEsente, addRegionale: addReg, addComunale: addCom, netto,
+      anno: { R: Rann, giorni: gA, irpefLorda: lordaAnnTI, detrazione: detrAnn, soglia: Math.max(0, detrAnn - 75 * gA / 365), ti: tiAnn, incapiente: lordaAnnTI <= detrAnn },
       totaleTrattenute: contributi + irpefNetta + sost + addReg + addCom,
     };
   }
