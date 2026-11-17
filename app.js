@@ -257,22 +257,38 @@ function stima(j, ym) {
   return { j, ym, c, base, v, cl, vym, aggiuntiva, ordinario, Rannuo, res, voci, giorniAttivi, chiamata };
 }
 
-/** Saldi ferie/permessi stimati a una data (default oggi) */
+/* ---- ferie e permessi: unità di misura ---- */
+/** ore di una giornata di ferie: 26 giorni l'anno = settimana di 6 giorni (commercio, turismo…), 22 = settimana di 5 */
+function oreGiornoFerie(j, ym) { const c = E.contratto(j, ym || curYM()); const pa = E.permessiAnnui(j, (ym || curYM()) + '-15'); return (c.oreSett || 40) / ((pa.ferieGiorni || 26) >= 24 ? 6 : 5); }
+/** in che unità la busta conta le ferie: dichiarata, letta, oppure dedotta dai numeri */
+function unitaFerie(b, j) {
+  if (b.ferieUnita) return b.ferieUnita;
+  if (b.ferieMat != null && b.ferieMat > 0) return b.ferieMat > 3.3 ? 'ore' : 'gg';
+  if (b.ferieRes == null) return 'gg';
+  if (j) { const og = oreGiornoFerie(j, b.ym); const mesi = j.inizio ? Math.max(1, (Number(b.ym.slice(0, 4)) - Number(j.inizio.slice(0, 4))) * 12 + Number(b.ym.slice(5, 7)) - Number(j.inizio.slice(5, 7)) + 1) : 12; const maxGG = Math.min(60, mesi * 26 / 12 + 30); if (b.ferieRes > maxGG) return 'ore'; if (og > 1.5 && b.ferieRes > 45) return 'ore'; }
+  return b.ferieRes > 45 ? 'ore' : 'gg';
+}
+const ferieOreDi = (b, j) => (b.ferieRes == null ? null : unitaFerie(b, j) === 'ore' ? b.ferieRes : b.ferieRes * oreGiornoFerie(j, b.ym));
+const permTot = (b) => { const v = [b.rolRes, b.exFestRes, b.permessiRes].filter((x) => x != null); return v.length ? v.reduce((a, x) => a + x, 0) : null; };
+const fmtFerie = (gg, og) => `${num(gg, 1)} gg${og > 0 ? ` · ${num(gg * og, 1)} h` : ''}`;
+
+/** Saldi ferie/permessi stimati a una data (default oggi). Le ferie sono in giorni (ferieOre in ore), i permessi in ore. */
 function saldi(j, alla) {
   if (!j || j.tipo === 'chiamata') return null;
   const oggi = alla || todayISO(); const cur = oggi.slice(0, 7);
-  const pa = E.permessiAnnui(j, oggi);
-  let baseYM, ferie, perm;
-  const ultime = S.buste.filter((b) => b.jobId === j.id && (b.ferieRes != null || b.permessiRes != null)).sort((a, b) => (a.ym < b.ym ? 1 : -1));
-  if (ultime.length) { baseYM = ultime[0].ym; ferie = ultime[0].ferieRes || 0; perm = ultime[0].permessiRes || 0; }
-  else if (j.resData) { baseYM = j.resData.slice(0, 7); ferie = toNum(j.resFerie) || 0; perm = toNum(j.resPermessi) || 0; }
-  else { if (!j.inizio) return null; baseYM = addYM(j.inizio.slice(0, 7), -1); ferie = 0; perm = 0; }
+  const pa = E.permessiAnnui(j, oggi); const og = oreGiornoFerie(j, cur);
+  let baseYM, ferieH, perm, rol = null, exf = null;
+  const ultime = S.buste.filter((b) => b.jobId === j.id && (b.ferieRes != null || permTot(b) != null)).sort((a, b) => (a.ym < b.ym ? 1 : -1));
+  if (ultime.length) { const b = ultime[0]; baseYM = b.ym; ferieH = ferieOreDi(b, j) || 0; perm = permTot(b) || 0; rol = b.rolRes ?? null; exf = b.exFestRes ?? null; }
+  else if (j.resData) { baseYM = j.resData.slice(0, 7); ferieH = (toNum(j.resFerie) || 0) * og; perm = toNum(j.resPermessi) || 0; }
+  else { if (!j.inizio) return null; baseYM = addYM(j.inizio.slice(0, 7), -1); ferieH = 0; perm = 0; }
   let ym = addYM(baseYM, 1); let mesi = 0;
   while (ym <= cur) { if (attivoNelMese(j, ym) >= 15 && (ym < cur || alla)) mesi++; ym = addYM(ym, 1); }
   const t = S.turni[j.id] || {}; const endBase = `${baseYM}-31`;
   let fU = 0, pU = 0; const oreG = E.contratto(j, cur).oreSett / (Number(j.giorniSett) || 5);
-  for (const [k, g] of Object.entries(t)) { if (k <= endBase || k > oggi) continue; if (g.tipo === 'ferie') fU++; else if (g.tipo === 'permesso') pU += Number(g.ore) || oreG; }
-  return { ferie: ferie + mesi * pa.ferieGiorni / 12 - fU, permessi: perm + mesi * (pa.rolOre + pa.exFestOre) / 12 - pU, da: baseYM, annui: pa };
+  for (const [k, g] of Object.entries(t)) { if (k <= endBase || k > oggi) continue; if (g.tipo === 'ferie') fU += Number(g.ore) || og; else if (g.tipo === 'permesso') pU += Number(g.ore) || oreG; }
+  const fH = ferieH + mesi * pa.ferieGiorni * og / 12 - fU;
+  return { ferie: og > 0 ? fH / og : 0, ferieOre: fH, oreGiorno: og, permessi: perm + mesi * (pa.rolOre + pa.exFestOre) / 12 - pU, rolBusta: rol, exFestBusta: exf, da: baseYM, annui: pa, mensili: { ferieOre: pa.ferieGiorni * og / 12, ferieGG: pa.ferieGiorni / 12, rol: pa.rolOre / 12, exFest: pa.exFestOre / 12 } };
 }
 
 /** TFR maturato fino a una data, con rivalutazione annua (1,5% + 75% inflazione, stimata all'1,5%) */
@@ -332,15 +348,43 @@ function controlla(b) {
     if (R <= 15000 && !/integrativ|t\.?\s*i\.?\s*r|ex\s*bonus|bonus\s*100|l\.?\s*21\/2020/i.test(T)) out.push({ s: 'info', t: 'Trattamento integrativo non trovato', p: 'Con questo reddito di solito spettano circa 100 € al mese (ex bonus Renzi). Non trovo la voce nel testo della busta.', lettera: 'Non trovo in busta il trattamento integrativo (ex bonus 100 €): mi spetta con il mio reddito?' });
     if (st.cl && (st.cl.festive + st.cl.domenicali + st.cl.notturne) > 0 && (red25 == null || red25 <= 40000) && !/sostitut|detass|15\s*%/i.test(T)) out.push({ s: 'info', t: 'Detassazione 15% non trovata', p: 'Nel 2026 le maggiorazioni per lavoro festivo, notturno e nel giorno di riposo sono tassate al 15% (fino a 1.500 €) se il reddito 2025 non supera 40.000 €.', lettera: 'Per le maggiorazioni di festivi e domeniche non vedo applicata l’imposta sostitutiva del 15% prevista per il 2026: è corretto?' });
   }
-  if (b.ferieRes != null) {
-    const prev = S.buste.filter((x) => x.jobId === b.jobId && x.ym < b.ym && x.ferieRes != null).sort((a, c) => (a.ym < c.ym ? 1 : -1))[0];
-    if (prev && prev.ym === addYM(b.ym, -1)) {
-      const used = Object.entries(S.turni[b.jobId] || {}).filter(([k, g]) => k.startsWith(b.ym) && g.tipo === 'ferie').length;
-      const att = prev.ferieRes + 26 / 12 - used;
-      if (Math.abs(att - b.ferieRes) > 1.2) out.push({ s: 'info', t: 'Saldo ferie da verificare', p: `Partendo da ${num(prev.ferieRes, 2)} giorni il mese scorso mi aspettavo circa ${num(att, 2)} giorni, in busta ${num(b.ferieRes, 2)}. Alcune buste indicano le ferie in ore.`, lettera: `Il saldo ferie (${num(b.ferieRes, 2)}) non mi torna rispetto al mese precedente (${num(prev.ferieRes, 2)}): potreste verificarlo?` });
+  out.push(...controllaFerie(b, j));
+  if (!out.length) out.push({ s: 'info', t: 'Pochi dati per il controllo', p: 'Inserisci almeno lordo, netto e contributi (o carica il PDF) per avere un controllo completo.' });
+  return out;
+}
+
+/** Ferie, ROL ed ex festività: maturazione del mese e saldi rispetto al CCNL e alla busta precedente */
+function controllaFerie(b, j) {
+  const out = []; if (!j || j.tipo === 'chiamata' || b.tipo !== 'mensile') return out;
+  if (b.ferieRes == null && b.ferieMat == null && b.rolMat == null && b.exFestMat == null && b.permessiMat == null && permTot(b) == null) return out;
+  const pa = E.permessiAnnui(j, b.ym + '-15'); const og = oreGiornoFerie(j, b.ym); const u = unitaFerie(b, j);
+  const pieno = attivoNelMese(j, b.ym) >= 15; const p = E.contratto(j, b.ym).p;
+  const att = { fer: (pa.ferieGiorni / 12) * (u === 'ore' ? og : 1), rol: pa.rolOre / 12, exf: pa.exFestOre / 12 };
+  const un = (x) => (x === 'ore' ? 'h' : 'gg');
+  const righe = []; const meno = []; const piu = [];
+  const cmp = (nome, letto, atteso, unita) => {
+    if (letto == null || !pieno) return; const tol = Math.max(0.06, atteso * 0.06);
+    righe.push(`${nome} +${num(letto, 2)} ${un(unita)}`);
+    if (letto < atteso - tol) meno.push({ nome, letto, atteso, unita }); else if (letto > atteso + tol) piu.push({ nome, letto, atteso, unita });
+  };
+  cmp('Ferie', b.ferieMat, att.fer, u); cmp('ROL', b.rolMat, att.rol, 'ore'); cmp('Ex festività', b.exFestMat, att.exf, 'ore');
+  if (b.rolMat == null && b.exFestMat == null) cmp('Permessi', b.permessiMat, att.rol + att.exf, 'ore');
+  const anz = j.inizio ? (new Date(b.ym + '-15') - new Date(j.inizio)) / (365.25 * 864e5) : 99;
+  const notaRol = (j.ccnl || 'commercio') === 'commercio' && j.inizio > '2011-02-26' && anz < 4 ? ` Nel Commercio, per chi è assunto dopo il 2011, i ROL non maturano nei primi 2 anni e sono a metà dal 3° al 4° (${anz < 2 ? 'tu sei nei primi 2' : 'tu sei a metà'}).` : '';
+  const attesi = `Ogni mese dovresti maturare ${num(att.fer, 2)} ${un(u)} di ferie${u === 'ore' ? ` (26 giorni l'anno da ${num(og, 2)} h)` : ''}, ${num(att.rol, 2)} h di ROL e ${num(att.exf, 2)} h di ex festività${p < 1 ? ', in proporzione al tuo part-time' : ''}.`;
+  if (meno.length) out.push({ s: 'warn', t: `Maturano meno ${meno.length === 1 ? meno[0].nome.toLowerCase() : 'ferie/permessi'} del previsto`, p: meno.map((m) => `${m.nome}: in busta +${num(m.letto, 2)} ${un(m.unita)}, mi aspettavo +${num(m.atteso, 2)} ${un(m.unita)}.`).join(' ') + ' ' + attesi + notaRol + ' Se nel mese hai avuto assenze non retribuite, aspettativa o meno di 15 giorni di lavoro, è normale.', lettera: `Nella busta di ${meseDi(b.ym)} ${meno.map((m) => `le ${m.nome.toLowerCase()} maturate sono ${num(m.letto, 2)} ${m.unita === 'ore' ? 'ore' : 'giorni'} invece di circa ${num(m.atteso, 2)}`).join(' e ')}: potreste verificare la maturazione rispetto al CCNL e al mio orario?` });
+  else if (righe.length) out.push({ s: 'ok', t: 'Ferie e permessi maturati correttamente', p: `Questo mese: ${righe.join(', ')}.${piu.length ? ` ${piu.map((m) => m.nome).join(' e ')}: ne maturi più del minimo del CCNL (${num(piu[0].atteso, 2)} ${un(piu[0].unita)}), meglio per te.` : ''}${notaRol}` });
+  // saldo rispetto alla busta del mese prima
+  const prev = S.buste.filter((x) => x.jobId === b.jobId && x.ym === addYM(b.ym, -1) && x.tipo === 'mensile')[0];
+  if (prev && b.ferieRes != null && prev.ferieRes != null && b.ferieMat == null && pieno) {
+    const giorni = Object.entries(S.turni[b.jobId] || {}).filter(([k, g]) => k.startsWith(b.ym) && g.tipo === 'ferie');
+    const usateH = giorni.reduce((a, [, g]) => a + (Number(g.ore) || og), 0);
+    const daH = ferieOreDi(prev, j), aH = ferieOreDi(b, j); const attH = daH + pa.ferieGiorni * og / 12 - usateH;
+    if (Math.abs(attH - aH) > Math.max(1, og * 0.6)) {
+      const conv = (h) => (u === 'ore' ? `${num(h, 2)} h` : `${num(h / og, 2)} gg`);
+      out.push({ s: 'info', t: 'Saldo ferie da verificare', p: `Il mese scorso avevi ${conv(daH)}; aggiungendo i ratei (${conv(pa.ferieGiorni * og / 12)})${usateH ? ` e togliendo le ferie segnate nei turni (${conv(usateH)})` : ''} mi aspettavo circa ${conv(attH)}, in busta ${conv(aH)}. Se hai fatto ferie non segnate nei turni, è normale.`, lettera: `Il saldo ferie della busta di ${meseDi(b.ym)} (${conv(aH)}) non mi torna rispetto al mese precedente (${conv(daH)}): potreste verificarlo?` });
     }
   }
-  if (!out.length) out.push({ s: 'info', t: 'Pochi dati per il controllo', p: 'Inserisci almeno lordo, netto e contributi (o carica il PDF) per avere un controllo completo.' });
   return out;
 }
 
@@ -484,8 +528,8 @@ const GLOSSARIO = [
 const TERMS = {
   lordo: ['Lordo', 'Quanto guadagni prima delle trattenute: paga base, maggiorazioni, mensilità aggiuntive.'],
   netto: ['Netto', 'Quello che ricevi davvero sul conto: lordo meno contributi, IRPEF e addizionali, più eventuali bonus fiscali.'],
-  ferie: ['Ferie residue', 'I giorni di ferie che ti restano. Maturano ogni mese (2,17 giorni nel Commercio) e scendono quando ne usi. Parto dall’ultima busta caricata, poi aggiungo i ratei e tolgo quelle segnate nei turni.'],
-  permessi: ['Permessi residui', 'Ore di permesso retribuito (ROL ed ex festività) che ti restano. Quelle non usate entro il 30 giugno dell’anno dopo vengono pagate in busta.'],
+  ferie: ['Ferie residue', 'Le ferie che ti restano. Nel Commercio sono 26 giorni l’anno (2,17 al mese) su una settimana di 6 giorni: una giornata vale 1/6 del tuo orario settimanale (con 24 h a settimana = 4 h, quindi 8,67 h al mese). Molte buste le contano in ore: te le mostro in tutti e due i modi. Parto dall’ultima busta, aggiungo i ratei e tolgo quelle segnate nei turni.'],
+  permessi: ['Permessi residui', 'Ore di permesso retribuito che ti restano: ROL (riduzione orario) ed ex festività. Nel Commercio le ex festività sono 32 h l’anno e i ROL 56 h (72 nelle aziende con più di 15 dipendenti), in proporzione al part-time; per chi è assunto dopo il 2011 i ROL partono dal 3° anno (metà) e sono interi dal 5°. Quelle non usate entro il 30 giugno dell’anno dopo vengono pagate in busta.'],
   tfr: ['TFR', 'La "liquidazione": ogni mese l’azienda accantona circa 1/13,5 di quello che guadagni. Te la paga quando il rapporto finisce. Il valore qui è una stima con la rivalutazione annuale.'],
   stima: ['Stima della busta', 'Calcolo il lordo dal tuo contratto, aggiungo le ore extra dai turni e applico contributi, IRPEF 2026, detrazioni e bonus fiscali. La busta reale può cambiare per conguagli, arretrati o voci aziendali.'],
   naspi: ['NASpI', 'L’indennità di disoccupazione dell’INPS. Spetta se perdi il lavoro senza dimetterti (scadenza, licenziamento) e hai almeno 13 settimane di contributi negli ultimi 4 anni. Dura metà delle settimane lavorate e dal 6° mese scende del 3% al mese.'],
@@ -620,6 +664,98 @@ function candidati(rows, lab) {
 function colonna(rows, re) { const l = trovaEtichette(rows, re)[0]; return l ? { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y } : null; }
 const nellaColonna = (r, col) => importiRiga(r).filter((it) => it.x + it.w >= col.x0 - 30 && it.x <= col.x1 + 30).sort((a, b) => Math.abs((a.x + a.w) - col.x1) - Math.abs((b.x + b.w) - col.x1))[0];
 
+/* ---- ferie, ROL ed ex festività: tabelle in tutte le forme ---- */
+const FP_TIPI = [['exf', /ex[\s.\-]*f(?:est|\.)|festivit[aà]\s*(?:sopp|sopr|abol)|f(?:est)?\.?\s*sopp/i], ['rol', /\br\.?\s?o\.?\s?l\.?\b|riduz\w*\s*(?:d\w*\s*)?orario|\brid\.?\s*or/i], ['fer', /\bferie\b/i], ['perm', /permess|\bperm\.?\b/i]];
+const FP_STATI = [['ap', /res(?:iduo|id)?\.?\s*(?:a\.?\s*p\b\.?|anno\s*prec\w*|prec\w*)|anno\s*prec\w*|\ba\.\s?p\.(?!\w)|\bres\.?\s*ap\b/i], ['god', /godut\w*|\bgod\.?(?![a-z])|fruit\w*|usufruit\w*|utilizzat\w*|\bgoduto\b/i], ['mat', /matur\w*|\bmat\.?(?![a-z])/i], ['sal', /\bsaldo\b|residu[oie]\b|\bresid\.?(?![a-z])|da\s*godere|disponibil\w*|\bres\.?(?![a-z])/i]];
+const fpTipo = (str) => { const t = FP_TIPI.filter(([, re]) => re.test(str)).map(([k]) => k); if (t.includes('rol') && t.includes('exf')) return 'perm'; /* "Permessi ROL/Ex fest." insieme */ return t[0] || null; };
+const fpStato = (str) => { for (const [k, re] of FP_STATI) if (re.test(str)) return k; return null; };
+const fpUnita = (str) => (/\(\s*(?:ore|hh|h)\s*\)|\bore\b|\bhh\b/i.test(str) ? 'ore' : /\(\s*(?:gg|giorni|g)\s*\)|\bgg\b|\bgiorni\b|\bgiorn/i.test(str) ? 'gg' : null);
+/** escludo voci pagate (competenze) e righe che non sono saldi */
+const FP_NO = /non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|retribu|€|\bz\d{4}|\b[a-z]\d{4,}\b|festivit[aà]\s*(?:god|lavor)|lavoro\s*fest/i;
+function fpChiudi(R) {
+  for (const k of Object.keys(R)) { const t = R[k]; if (t.sal == null && (t.mat != null || t.ap != null)) t.sal = Math.round(((t.ap || 0) + (t.mat || 0) - (t.god || 0)) * 100) / 100; if (t.sal == null && t.mat == null) delete R[k]; }
+  return R;
+}
+function leggiFerieLayout(rows) {
+  const R = {}; const metti = (tipo, stato, v, u) => { if (v == null || !tipo || !stato) return; const t = (R[tipo] = R[tipo] || {}); if (t[stato] == null) t[stato] = v; if (u && !t.u) t.u = u; };
+  const testa = (r) => { const n = r.items.find((it) => IMPORTO_RE.test(it.s)); return r.items.filter((it) => !n || it.x < n.x).map((it) => it.s).join(' '); };
+  // raggruppo le parole vicine ("Res." + "A.P." = una sola intestazione)
+  const gruppi = (r) => { const g = []; for (const it of r.items) { if (IMPORTO_RE.test(it.s)) { g.push(null); continue; } const last = g[g.length - 1]; if (last && it.x - last.x1 < 7) { last.s += ' ' + it.s; last.x1 = it.x + it.w; } else g.push({ s: it.s, x0: it.x, x1: it.x + it.w }); } return g.filter(Boolean); };
+  const etich = (r, kind) => gruppi(r).map((g) => ({ ...g, k: kind === 'stato' ? fpStato(g.s) : fpTipo(g.s) })).filter((g) => g.k);
+  // A) stati in colonna (Res. A.P. | Maturato | Goduto | Saldo), una riga per tipo
+  for (const H of rows) {
+    if (importiRiga(H).length) continue; const cols = etich(H, 'stato'); if (new Set(cols.map((c) => c.k)).size < 2) continue;
+    const uH = fpUnita(H.str);
+    for (const r of rows) {
+      if (r.p !== H.p || r.y >= H.y || H.y - r.y > 150 || !importiRiga(r).length) continue;
+      const lab = testa(r); const tipo = fpTipo(lab); if (!tipo || FP_NO.test(lab)) continue;
+      for (const c of cols) { const it = nellaColonna(r, c); if (it) metti(tipo, c.k, valImp(it.s), fpUnita(lab) || uH); }
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  // B) tipi in colonna (Ferie | ROL | Ex fest.), una riga per stato
+  for (const H of rows) {
+    if (importiRiga(H).length) continue; const cols = etich(H, 'tipo'); if (new Set(cols.map((c) => c.k)).size < 2) continue;
+    for (const r of rows) {
+      if (r.p !== H.p || r.y >= H.y || H.y - r.y > 150 || !importiRiga(r).length) continue;
+      const lab = testa(r); const stato = fpStato(lab); if (!stato || FP_NO.test(lab) || fpTipo(lab)) continue;
+      for (const c of cols) { const it = nellaColonna(r, c); if (it) metti(c.k, stato, valImp(it.s), fpUnita(c.s) || fpUnita(H.str)); }
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  return R;
+}
+function leggiFerieTesto(L) {
+  const R = {}; const metti = (tipo, stato, v, u) => { if (v == null || !tipo || !stato) return; const t = (R[tipo] = R[tipo] || {}); if (t[stato] == null) t[stato] = v; if (u && !t.u) t.u = u; };
+  const nums = (l) => importiIn(l);
+  const parti = (l) => l.split(/\s{2,}|\t|\|/).map((x) => x.trim()).filter(Boolean);
+  // 1) etichette in riga: "Ferie: res. AP 4,33 mat. 2,17 god. 1,00 saldo 5,50"
+  for (const l of L) {
+    const tipo = fpTipo(l.split(/\d/)[0] || ''); if (!tipo || FP_NO.test(l)) continue;
+    const re = new RegExp(`(${FP_STATI.map(([, r]) => r.source).join('|')})\\s*[:=]?\\s*(-?\\d[\\d.]*,\\d{1,2})`, 'gi'); let m; let n = 0;
+    while ((m = re.exec(l))) { metti(tipo, fpStato(m[1]), pnum(m[m.length - 1]), fpUnita(l)); n++; }
+    if (!n && /saldo|resid/i.test(l) && nums(l).length) metti(tipo, 'sal', nums(l).slice(-1)[0], fpUnita(l));
+  }
+  if (Object.keys(R).length) return fpChiudi(R);
+  // 2) intestazione con gli stati, poi una riga per tipo
+  for (let i = 0; i < L.length; i++) {
+    if (nums(L[i]).length) continue;
+    const st = []; const rx = new RegExp(FP_STATI.map(([, r]) => `(${r.source})`).join('|'), 'gi'); let m;
+    while ((m = rx.exec(L[i]))) { const k = fpStato(m[0]); if (k && !st.includes(k)) st.push(k); }
+    if (st.length < 2) continue; const uH = fpUnita(L[i]);
+    for (let k = i + 1; k < Math.min(L.length, i + 9); k++) {
+      const v = nums(L[k]); if (!v.length) continue; const lab = L[k].split(/-?\d/)[0]; const tipo = fpTipo(lab); if (!tipo || FP_NO.test(lab)) continue;
+      const vv = v.length >= st.length ? v.slice(-st.length) : null;
+      if (vv) st.forEach((s2, q) => metti(tipo, s2, vv[q], fpUnita(lab) || uH)); else metti(tipo, 'sal', v[v.length - 1], fpUnita(lab) || uH);
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  // 3) intestazione con i tipi, poi una riga per stato
+  for (let i = 0; i < L.length; i++) {
+    if (nums(L[i]).length) continue;
+    const hit = []; const rx = new RegExp(FP_TIPI.map(([, r]) => `(${r.source})`).join('|'), 'gi'); let m;
+    while ((m = rx.exec(L[i]))) { const k = fpTipo(m[0]); if (k) hit.push({ k, a: m.index, b: m.index + m[0].length }); }
+    // "Permessi ROL" / "Permessi ex fest." sono una sola colonna
+    const tp = hit.filter((h, q) => !(h.k === 'perm' && hit[q + 1] && hit[q + 1].a - h.b <= 3)).map((h) => h.k).filter((k, q, arr) => arr.indexOf(k) === q);
+    if (tp.length < 2) continue;
+    for (let k = i + 1; k < Math.min(L.length, i + 7); k++) {
+      const v = nums(L[k]); if (!v.length) continue; const lab = L[k].split(/-?\d/)[0]; const stato = fpStato(lab); if (!stato || fpTipo(lab)) continue;
+      if (v.length >= tp.length) tp.forEach((t, q) => metti(t, stato, v.slice(-tp.length)[q], fpUnita(L[i])));
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  return R;
+}
+/** Dalla tabella ai campi della busta */
+function ferieInBusta(R, found) {
+  const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
+  if (R.fer) { if (found.ferieRes == null && R.fer.sal != null) found.ferieRes = r2(R.fer.sal); if (found.ferieMat == null && R.fer.mat != null) found.ferieMat = r2(R.fer.mat); if (R.fer.u) found.ferieUnita = R.fer.u; }
+  if (R.rol) { if (found.rolRes == null && R.rol.sal != null) found.rolRes = r2(R.rol.sal); if (found.rolMat == null && R.rol.mat != null) found.rolMat = r2(R.rol.mat); }
+  if (R.exf) { if (found.exFestRes == null && R.exf.sal != null) found.exFestRes = r2(R.exf.sal); if (found.exFestMat == null && R.exf.mat != null) found.exFestMat = r2(R.exf.mat); }
+  if (R.perm) { if (found.permessiRes == null && R.perm.sal != null) found.permessiRes = r2(R.perm.sal); if (found.permessiMat == null && R.perm.mat != null) found.permessiMat = r2(R.perm.mat); }
+  if (!found.ferieUnita && R.fer) { const m = R.fer.mat, sl = R.fer.sal; if (m != null && m > 0) found.ferieUnita = m > 3.3 ? 'ore' : 'gg'; else if (sl != null && sl > 45) found.ferieUnita = 'ore'; }
+}
+
 function parseBusta(text) {
   const L = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
   const found = {}; const appresi = [];
@@ -666,15 +802,8 @@ function parseBusta(text) {
       if (k === 'contributi' && righeContr.size > 1) vals.unshift([...righeContr.values()].reduce((s, v) => s + v, 0));
       if (vals.length) C[k] = [...new Set(vals)];
     }
-    // tabella ferie/permessi: riga × colonna "Saldo/Residuo"
-    const colSaldo = (() => { const ls = trovaEtichette(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno)(?!\s*prec)|spettant|da\s*godere|disponibil/i).filter((l) => !/prec|a\.\s*p|anno\s*prec/i.test(l.r.str.slice(l.its[0].o, l.its[l.its.length - 1].o + l.its[l.its.length - 1].s.length + 8))); if (!ls.length) return null; const l = ls.sort((a, b) => b.x1 - a.x1)[0]; return { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y }; })();
-    const tab = (re) => {
-      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur|non\s*god|liquid|indennit|\bratei\b|monetizz/i).filter((l) => !/non\s*god|liquid|indennit|\bratei\b|monetizz/i.test(l.r.str)).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
-      for (const lab of labs) { const its = importiRiga(lab.r).filter((it) => it.x >= lab.x1 - 2); if (!its.length) continue; const it = colSaldo && colSaldo.p === lab.r.p ? nellaColonna(lab.r, colSaldo) || its[its.length - 1] : its[its.length - 1]; tot = (tot || 0) + valImp(it.s); }
-      return tot;
-    };
-    if (found.ferieRes == null) { const v = tab(/^\s*ferie\b|\bferie\b(?!\s*god)/i); if (v != null) found.ferieRes = v; }
-    if (found.permessiRes == null) { const v = tab(/permess|\br\.?\s?o\.?\s?l\.?\b|ex[\s.-]*fest/i); if (v != null) found.permessiRes = v; }
+    // tabella ferie / ROL / ex festività (in qualsiasi orientamento)
+    ferieInBusta(leggiFerieLayout(rows), found);
   }
   // lettura per righe (foto, PDF senza posizioni): tutti i valori plausibili
   // titoli di colonna tipici delle buste (per associare i valori della riga sotto in ordine)
@@ -717,10 +846,8 @@ function parseBusta(text) {
   pick('addReg', (v) => v >= 0 && v < 400); pick('addCom', (v) => v >= 0 && v < 300);
   pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
   pick('oreExtra', (v) => v > 0 && v <= 120);
-  // ferie e permessi senza posizioni: ultimo numero della riga
-  const nonSaldo = /non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i;
-  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b(?!\s*\/\s*permess)/i, { last: true, sameLine: true, not: nonSaldo });
-  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true, sameLine: true, not: /ferie\s*\/\s*permess|non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i });
+  // ferie e permessi senza posizioni (foto, testo): tabelle riconosciute dalle intestazioni
+  if (found.ferieRes == null && found.rolRes == null && found.exFestRes == null && found.permessiRes == null) ferieInBusta(leggiFerieTesto(L), found);
   const mesiRe = new RegExp(`\\b(${MESI.join('|')})\\s*[-/]?\\s*(20\\d{2})`, 'i');
   const pm = text.match(mesiRe);
   if (pm) found.ym = `${pm[2]}-${pad(MESI.indexOf(pm[1].toLowerCase()) + 1)}`;
@@ -990,7 +1117,7 @@ function viewHome() {
   const sd = saldi(j); const tfr = tfrStimato(j);
   const ultima = S.buste.filter((b) => b.jobId === j.id).sort((a, b) => (a.ym < b.ym ? 1 : -1))[0];
   h += `<div class="grid2">
-    <div class="tile" data-go="#turni"><div class="row between"><div class="ic g">${ic.sun}</div>${info('ferie')}</div><div><div class="v">${sd ? num(sd.ferie, 1) : '—'} <small class="muted" style="font-size:14px">giorni</small></div><div class="l">Ferie residue</div></div></div>
+    <div class="tile" data-go="#turni"><div class="row between"><div class="ic g">${ic.sun}</div>${info('ferie')}</div><div><div class="v">${sd ? num(sd.ferie, 1) : '—'} <small class="muted" style="font-size:14px">giorni</small></div><div class="l">Ferie residue${sd && sd.oreGiorno ? ` · ${num(sd.ferieOre, 1)} h` : ''}</div></div></div>
     <div class="tile" data-go="#turni"><div class="row between"><div class="ic a">${ic.clock}</div>${info('permessi')}</div><div><div class="v">${sd ? num(sd.permessi, 0) : '—'} <small class="muted" style="font-size:14px">ore</small></div><div class="l">Permessi residui</div></div></div>
     <div class="tile" data-go="#fine-${j.id}"><div class="row between"><div class="ic b">${ic.piggy}</div>${info('tfr')}</div><div><div class="v">${eur0(tfr)}</div><div class="l">TFR maturato (stima)</div></div></div>
     <div class="tile" data-go="${ultima ? '#busta-' + ultima.id : '#buste'}"><div class="ic r">${ic.doc}</div><div><div class="v">${ultima ? eur0(ultima.netto) : '—'}</div><div class="l">${ultima ? 'Ultima busta · ' + ymShort(ultima.ym) : 'Nessuna busta ancora'}</div></div></div>
@@ -1071,15 +1198,18 @@ function viewBusta(id) {
   h += `<div class="card"><h2>Controllo</h2>${chk.map((c) => `<div class="chk ${c.s}"><div class="dot">${c.s === 'ok' ? ic.check : c.s === 'warn' ? ic.alert : ic.info}</div><div><b>${esc(c.t)}</b><p>${esc(c.p)}</p></div></div>`).join('')}
     <button class="btn ${problemi.length ? '' : 'ghost'} block" style="margin-top:12px" data-act="lettera" data-id="${b.id}">${ic.mail} ${problemi.length ? 'Chiedi chiarimenti all’ufficio paghe' : 'Scrivi all’ufficio paghe'}</button></div>`;
   const rows = [['Totale competenze (lordo)', b.lordo], ['Imponibile previdenziale', b.imponibilePrev], ['Contributi INPS', b.contributi], ['Imponibile fiscale', b.imponibileFisc], ['IRPEF trattenuta', b.irpef], ['Addizionale regionale', b.addReg], ['Addizionale comunale', b.addCom], ['Totale trattenute', b.trattenute], ['Quota TFR del mese', b.tfr]].filter((r) => r[1] != null);
-  const rows2 = [['Ore supplementari/straordinarie', b.oreExtra, 'h'], ['Ferie residue', b.ferieRes, 'gg'], ['Permessi residui', b.permessiRes, 'h']].filter((r) => r[1] != null);
-  if (rows.length || rows2.length) h += `<div class="card"><h2>Dati della busta</h2>${rows.map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${eur(v)}</span></div>`).join('')}${rows2.map(([k, v, u]) => `<div class="kv"><span class="k">${k}</span><span class="v">${num(v, 2)} ${u}</span></div>`).join('')}${b.note ? `<p class="small muted" style="margin:10px 0 0">${esc(b.note)}</p>` : ''}</div>`;
+  const uF = unitaFerie(b, j), ogF = j && j.tipo !== 'chiamata' ? oreGiornoFerie(j, b.ym) : 0;
+  const ferieTxt = (v) => (v == null ? null : uF === 'ore' ? `${num(v, 2)} h${ogF ? ` (≈ ${num(v / ogF, 1)} gg)` : ''}` : `${num(v, 2)} gg${ogF ? ` (≈ ${num(v * ogF, 1)} h)` : ''}`);
+  const soloAltri = b.rolRes == null && b.exFestRes == null;
+  const rows2 = [['Ore supplementari/straordinarie', b.oreExtra, 'h'], ['Ferie residue', ferieTxt(b.ferieRes)], ['Ferie maturate nel mese', b.ferieMat != null ? '+' + ferieTxt(b.ferieMat) : null], ['ROL residui', b.rolRes, 'h'], ['ROL maturati nel mese', b.rolMat != null ? '+' + num(b.rolMat, 2) + ' h' : null], ['Ex festività residue', b.exFestRes, 'h'], ['Ex festività maturate nel mese', b.exFestMat != null ? '+' + num(b.exFestMat, 2) + ' h' : null], [soloAltri ? 'Permessi residui' : 'Altri permessi residui', b.permessiRes, 'h'], ['Permessi maturati nel mese', b.permessiMat != null ? '+' + num(b.permessiMat, 2) + ' h' : null]].filter((r) => r[1] != null);
+  if (rows.length || rows2.length) h += `<div class="card"><h2>Dati della busta</h2>${rows.map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${eur(v)}</span></div>`).join('')}${rows2.map(([k, v, u]) => `<div class="kv"><span class="k">${k}</span><span class="v">${typeof v === 'string' ? v : `${num(v, 2)} ${u}`}</span></div>`).join('')}${b.note ? `<p class="small muted" style="margin:10px 0 0">${esc(b.note)}</p>` : ''}</div>`;
   if (b.testo) { const tr = []; GLOSSARIO.forEach(([, L]) => L.forEach((g) => { if (g[1].test(b.testo)) tr.push(g); })); if (tr.length) h += `<div class="card"><h2>Le voci della tua busta</h2>${tr.map((g) => `<details class="gl"><summary>${esc(g[0])}</summary><p>${esc(g[2])}</p></details>`).join('')}</div>`; }
   else h += `<div class="card"><h2>Le voci spiegate</h2><p class="small muted" style="margin:0 0 10px">Carica il PDF per vedere spiegate solo le voci della tua busta.</p><a class="btn sm ghost" href="#guida">${ic.book} Apri la guida</a></div>`;
   h += `<button class="btn danger block" data-act="busta-del" data-id="${b.id}">${ic.trash} Elimina busta</button>`;
   return h;
 }
 
-const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'giorni'], ['permessiRes', 'Permessi residui', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
+const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'saldo'], ['ferieMat', 'Ferie maturate nel mese', 'es. 8,67'], ['rolRes', 'ROL residui', 'ore'], ['rolMat', 'ROL maturati nel mese', 'ore'], ['exFestRes', 'Ex festività residue', 'ore'], ['exFestMat', 'Ex festività maturate nel mese', 'ore'], ['permessiRes', 'Altri permessi residui', 'ore'], ['permessiMat', 'Altri permessi maturati nel mese', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
 function bustaForm(pref = {}, found = {}, fileRec = null) {
   const b = Object.assign({ tipo: 'mensile', ym: addYM(curYM(), -1), jobId: (attivo() || {}).id }, pref);
   const testo = fileRec ? fileRec.testo : (pref.testo || '');
@@ -1092,7 +1222,7 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
   <div class="fgrid"><label class="field"><span>Mese${found.ym ? ' <span class="badge ok">letto</span>' : ''}</span><input class="inp" type="month" name="ym" value="${b.ym}" required></label>
   <label class="field"><span>Tipo</span><select class="inp" name="tipo">${[['mensile', 'Mensile'], ['tredicesima', '13ª'], ['quattordicesima', '14ª'], ['conguaglio', 'Conguaglio / altro']].map(([v, l]) => `<option value="${v}" ${b.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
   <div class="fgrid">${principali.map((c) => inp(...c)).join('')}</div>
-  <details class="gl" ${altri.some((c) => found[c[0]] != null) ? 'open' : ''}><summary>Altri dati (facoltativi)</summary><div class="fgrid">${altri.map((c) => inp(...c)).join('')}</div>
+  <details class="gl" ${altri.some((c) => found[c[0]] != null) ? 'open' : ''}><summary>Altri dati (facoltativi)</summary><div class="fgrid">${altri.map((c) => inp(...c) + (c[0] === 'ferieMat' ? `<label class="field"><span>Le ferie in busta sono in${found.ferieUnita ? ' <span class="badge ok">letto</span>' : ''}</span><select class="inp" name="ferieUnita"><option value="">Riconosci da solo</option><option value="ore" ${(found.ferieUnita || b.ferieUnita) === 'ore' ? 'selected' : ''}>Ore</option><option value="gg" ${(found.ferieUnita || b.ferieUnita) === 'gg' ? 'selected' : ''}>Giorni</option></select></label>` : '')).join('')}</div>
   <label class="field"><span>Note</span><textarea class="inp" name="note">${esc(b.note || '')}</textarea></label></details>
   <div class="btns" style="margin-top:14px"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`;
   const sh = openSheet(h); const form = $('form', sh);
@@ -1115,7 +1245,7 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
     e.preventDefault(); const fd = new FormData(form);
     const rec = pref.id ? S.buste.find((x) => x.id === pref.id) : { id: uid() };
     rec.jobId = fd.get('jobId') || null; rec.ym = fd.get('ym'); rec.tipo = fd.get('tipo'); rec.note = fd.get('note') || '';
-    CAMPI_BUSTA.forEach(([k]) => { rec[k] = toNum(fd.get(k)); });
+    CAMPI_BUSTA.forEach(([k]) => { rec[k] = toNum(fd.get(k)); }); rec.ferieUnita = fd.get('ferieUnita') || null;
     if (!rec.ym) { toast('Indica il mese'); return; }
     if (fileRec) { rec.fileId = fileRec.id; rec.testo = (fileRec.testo || '').slice(0, 20000); }
     if (!pref.id) S.buste.push(rec);
@@ -1225,7 +1355,7 @@ function viewLavoro(id) {
     <div class="kv"><span class="k">Buste archiviate</span><span class="v">${bs.length}</span></div>
     ${bs.length ? `<div class="kv"><span class="k">Netto totale</span><span class="v">${eur(totN)}</span></div>` : ''}${totL ? `<div class="kv"><span class="k">Lordo totale</span><span class="v">${eur(totL)}</span></div>` : ''}
     <div class="kv"><span class="k">TFR maturato (stima) ${info('tfr')}</span><span class="v">${eur(tfrStimato(j))}</span></div>
-    ${sd ? `<div class="kv"><span class="k">Ferie residue</span><span class="v">${num(sd.ferie, 2)} gg</span></div><div class="kv"><span class="k">Permessi residui</span><span class="v">${num(sd.permessi, 1)} h</span></div>` : ''}</div>`;
+    ${sd ? `<div class="kv"><span class="k">Ferie residue</span><span class="v">${fmtFerie(sd.ferie, sd.oreGiorno)}</span></div><div class="kv"><span class="k">Permessi residui</span><span class="v">${num(sd.permessi, 1)} h</span></div>` : ''}</div>`;
   if (bs.length) h += `<div class="card"><h2>Buste</h2><div class="list">${bs.map((b) => `<a class="li" href="#busta-${b.id}"><div class="grow"><div class="t">${ymLabel(b.ym)}${b.tipo !== 'mensile' ? ' · ' + b.tipo : ''}</div></div><div class="amt">${eur(b.netto)}</div><span class="chev">${ic.chev}</span></a>`).join('')}</div></div>`;
   h += `<button class="btn danger block" data-act="job-del" data-id="${j.id}">${ic.trash} Elimina lavoro</button>`;
   if (c.stima) h += `<p class="note">* Minimo ricostruito o precedente alla tabella in vigore: stima.</p>`;
@@ -1400,7 +1530,10 @@ function viewTurni() {
   const payYM = S.profilo.variabiliMeseSucc ? addYM(turniYM, 1) : turniYM; const st = stima(j, payYM);
   if (st && tot) h += `<div class="card"><h2><span class="grow">Busta di ${meseDi(payYM)}</span><span class="badge a">stima</span></h2><div class="big" style="font-size:34px">${eur(st.res.netto)}</div><div class="muted small">lordo ${eur(st.res.lordo)}${st.v ? ` · di cui variabili ${eur(st.v.totale)}` : ''}</div><button class="btn sm ghost" style="margin-top:12px" data-act="dettaglio-stima" data-ym="${payYM}" data-job="${j.id}">Come ci arrivo</button>${S.profilo.variabiliMeseSucc ? '<p class="note">Le ore di questo mese vengono pagate nella busta del mese dopo.</p>' : ''}</div>`;
   const sd = saldi(j);
-  if (sd) h += `<div class="card"><h2>Ferie e permessi</h2><div class="kv"><span class="k">Ferie residue oggi ${info('ferie')}</span><span class="v">${num(sd.ferie, 2)} gg</span></div><div class="kv"><span class="k">Permessi residui oggi ${info('permessi')}</span><span class="v">${num(sd.permessi, 1)} h</span></div><div class="kv"><span class="k">Maturano all'anno</span><span class="v">${sd.annui.ferieGiorni} gg · ${num(sd.annui.rolOre + sd.annui.exFestOre, 1)} h</span></div>${sd.annui.rolOre === 0 ? '<p class="note">Nei primi 2 anni maturano solo le ore di ex festività (in proporzione all’orario).</p>' : ''}</div>`;
+  if (sd) { const m = sd.mensili; const pt = sd.annui;
+    h += `<div class="card"><h2>Ferie e permessi</h2><div class="kv"><span class="k">Ferie residue oggi ${info('ferie')}</span><span class="v">${fmtFerie(sd.ferie, sd.oreGiorno)}</span></div><div class="kv"><span class="k">Permessi residui oggi ${info('permessi')}</span><span class="v">${num(sd.permessi, 1)} h</span></div>${sd.rolBusta != null || sd.exFestBusta != null ? `<p class="small muted" style="margin:4px 0 8px">Nell'ultima busta (${meseDi(sd.da)}): ${[sd.rolBusta != null ? `ROL ${num(sd.rolBusta, 2)} h` : '', sd.exFestBusta != null ? `ex festività ${num(sd.exFestBusta, 2)} h` : ''].filter(Boolean).join(' · ')}</p>` : ''}
+      <div class="kv"><span class="k">Ogni mese maturi</span><span class="v">${num(m.ferieOre, 2)} h di ferie · ${num(m.rol + m.exFest, 2)} h di permessi</span></div><div class="kv"><span class="k">In un anno</span><span class="v">${pt.ferieGiorni} gg (${num(pt.ferieGiorni * sd.oreGiorno, 1)} h) · ROL ${num(pt.rolOre, 1)} h · ex fest. ${num(pt.exFestOre, 1)} h</span></div>
+      <p class="note">Una giornata di ferie vale ${num(sd.oreGiorno, 2)} h (il tuo orario settimanale diviso 6, perché le ferie si contano su 6 giorni).${pt.rolOre === 0 ? ' Nei primi 2 anni maturano solo le ex festività; i ROL arrivano dal 3° anno (metà) e sono interi dal 5°.' : ''}</p></div>`; }
   return h;
 }
 function giornoSheet(k, pre = null, onDone = null) {

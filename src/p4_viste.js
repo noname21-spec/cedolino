@@ -52,7 +52,7 @@ function viewHome() {
   const sd = saldi(j); const tfr = tfrStimato(j);
   const ultima = S.buste.filter((b) => b.jobId === j.id).sort((a, b) => (a.ym < b.ym ? 1 : -1))[0];
   h += `<div class="grid2">
-    <div class="tile" data-go="#turni"><div class="row between"><div class="ic g">${ic.sun}</div>${info('ferie')}</div><div><div class="v">${sd ? num(sd.ferie, 1) : '—'} <small class="muted" style="font-size:14px">giorni</small></div><div class="l">Ferie residue</div></div></div>
+    <div class="tile" data-go="#turni"><div class="row between"><div class="ic g">${ic.sun}</div>${info('ferie')}</div><div><div class="v">${sd ? num(sd.ferie, 1) : '—'} <small class="muted" style="font-size:14px">giorni</small></div><div class="l">Ferie residue${sd && sd.oreGiorno ? ` · ${num(sd.ferieOre, 1)} h` : ''}</div></div></div>
     <div class="tile" data-go="#turni"><div class="row between"><div class="ic a">${ic.clock}</div>${info('permessi')}</div><div><div class="v">${sd ? num(sd.permessi, 0) : '—'} <small class="muted" style="font-size:14px">ore</small></div><div class="l">Permessi residui</div></div></div>
     <div class="tile" data-go="#fine-${j.id}"><div class="row between"><div class="ic b">${ic.piggy}</div>${info('tfr')}</div><div><div class="v">${eur0(tfr)}</div><div class="l">TFR maturato (stima)</div></div></div>
     <div class="tile" data-go="${ultima ? '#busta-' + ultima.id : '#buste'}"><div class="ic r">${ic.doc}</div><div><div class="v">${ultima ? eur0(ultima.netto) : '—'}</div><div class="l">${ultima ? 'Ultima busta · ' + ymShort(ultima.ym) : 'Nessuna busta ancora'}</div></div></div>
@@ -133,15 +133,18 @@ function viewBusta(id) {
   h += `<div class="card"><h2>Controllo</h2>${chk.map((c) => `<div class="chk ${c.s}"><div class="dot">${c.s === 'ok' ? ic.check : c.s === 'warn' ? ic.alert : ic.info}</div><div><b>${esc(c.t)}</b><p>${esc(c.p)}</p></div></div>`).join('')}
     <button class="btn ${problemi.length ? '' : 'ghost'} block" style="margin-top:12px" data-act="lettera" data-id="${b.id}">${ic.mail} ${problemi.length ? 'Chiedi chiarimenti all’ufficio paghe' : 'Scrivi all’ufficio paghe'}</button></div>`;
   const rows = [['Totale competenze (lordo)', b.lordo], ['Imponibile previdenziale', b.imponibilePrev], ['Contributi INPS', b.contributi], ['Imponibile fiscale', b.imponibileFisc], ['IRPEF trattenuta', b.irpef], ['Addizionale regionale', b.addReg], ['Addizionale comunale', b.addCom], ['Totale trattenute', b.trattenute], ['Quota TFR del mese', b.tfr]].filter((r) => r[1] != null);
-  const rows2 = [['Ore supplementari/straordinarie', b.oreExtra, 'h'], ['Ferie residue', b.ferieRes, 'gg'], ['Permessi residui', b.permessiRes, 'h']].filter((r) => r[1] != null);
-  if (rows.length || rows2.length) h += `<div class="card"><h2>Dati della busta</h2>${rows.map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${eur(v)}</span></div>`).join('')}${rows2.map(([k, v, u]) => `<div class="kv"><span class="k">${k}</span><span class="v">${num(v, 2)} ${u}</span></div>`).join('')}${b.note ? `<p class="small muted" style="margin:10px 0 0">${esc(b.note)}</p>` : ''}</div>`;
+  const uF = unitaFerie(b, j), ogF = j && j.tipo !== 'chiamata' ? oreGiornoFerie(j, b.ym) : 0;
+  const ferieTxt = (v) => (v == null ? null : uF === 'ore' ? `${num(v, 2)} h${ogF ? ` (≈ ${num(v / ogF, 1)} gg)` : ''}` : `${num(v, 2)} gg${ogF ? ` (≈ ${num(v * ogF, 1)} h)` : ''}`);
+  const soloAltri = b.rolRes == null && b.exFestRes == null;
+  const rows2 = [['Ore supplementari/straordinarie', b.oreExtra, 'h'], ['Ferie residue', ferieTxt(b.ferieRes)], ['Ferie maturate nel mese', b.ferieMat != null ? '+' + ferieTxt(b.ferieMat) : null], ['ROL residui', b.rolRes, 'h'], ['ROL maturati nel mese', b.rolMat != null ? '+' + num(b.rolMat, 2) + ' h' : null], ['Ex festività residue', b.exFestRes, 'h'], ['Ex festività maturate nel mese', b.exFestMat != null ? '+' + num(b.exFestMat, 2) + ' h' : null], [soloAltri ? 'Permessi residui' : 'Altri permessi residui', b.permessiRes, 'h'], ['Permessi maturati nel mese', b.permessiMat != null ? '+' + num(b.permessiMat, 2) + ' h' : null]].filter((r) => r[1] != null);
+  if (rows.length || rows2.length) h += `<div class="card"><h2>Dati della busta</h2>${rows.map(([k, v]) => `<div class="kv"><span class="k">${k}</span><span class="v">${eur(v)}</span></div>`).join('')}${rows2.map(([k, v, u]) => `<div class="kv"><span class="k">${k}</span><span class="v">${typeof v === 'string' ? v : `${num(v, 2)} ${u}`}</span></div>`).join('')}${b.note ? `<p class="small muted" style="margin:10px 0 0">${esc(b.note)}</p>` : ''}</div>`;
   if (b.testo) { const tr = []; GLOSSARIO.forEach(([, L]) => L.forEach((g) => { if (g[1].test(b.testo)) tr.push(g); })); if (tr.length) h += `<div class="card"><h2>Le voci della tua busta</h2>${tr.map((g) => `<details class="gl"><summary>${esc(g[0])}</summary><p>${esc(g[2])}</p></details>`).join('')}</div>`; }
   else h += `<div class="card"><h2>Le voci spiegate</h2><p class="small muted" style="margin:0 0 10px">Carica il PDF per vedere spiegate solo le voci della tua busta.</p><a class="btn sm ghost" href="#guida">${ic.book} Apri la guida</a></div>`;
   h += `<button class="btn danger block" data-act="busta-del" data-id="${b.id}">${ic.trash} Elimina busta</button>`;
   return h;
 }
 
-const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'giorni'], ['permessiRes', 'Permessi residui', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
+const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ferieRes', 'Ferie residue', 'saldo'], ['ferieMat', 'Ferie maturate nel mese', 'es. 8,67'], ['rolRes', 'ROL residui', 'ore'], ['rolMat', 'ROL maturati nel mese', 'ore'], ['exFestRes', 'Ex festività residue', 'ore'], ['exFestMat', 'Ex festività maturate nel mese', 'ore'], ['permessiRes', 'Altri permessi residui', 'ore'], ['permessiMat', 'Altri permessi maturati nel mese', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
 function bustaForm(pref = {}, found = {}, fileRec = null) {
   const b = Object.assign({ tipo: 'mensile', ym: addYM(curYM(), -1), jobId: (attivo() || {}).id }, pref);
   const testo = fileRec ? fileRec.testo : (pref.testo || '');
@@ -154,7 +157,7 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
   <div class="fgrid"><label class="field"><span>Mese${found.ym ? ' <span class="badge ok">letto</span>' : ''}</span><input class="inp" type="month" name="ym" value="${b.ym}" required></label>
   <label class="field"><span>Tipo</span><select class="inp" name="tipo">${[['mensile', 'Mensile'], ['tredicesima', '13ª'], ['quattordicesima', '14ª'], ['conguaglio', 'Conguaglio / altro']].map(([v, l]) => `<option value="${v}" ${b.tipo === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label></div>
   <div class="fgrid">${principali.map((c) => inp(...c)).join('')}</div>
-  <details class="gl" ${altri.some((c) => found[c[0]] != null) ? 'open' : ''}><summary>Altri dati (facoltativi)</summary><div class="fgrid">${altri.map((c) => inp(...c)).join('')}</div>
+  <details class="gl" ${altri.some((c) => found[c[0]] != null) ? 'open' : ''}><summary>Altri dati (facoltativi)</summary><div class="fgrid">${altri.map((c) => inp(...c) + (c[0] === 'ferieMat' ? `<label class="field"><span>Le ferie in busta sono in${found.ferieUnita ? ' <span class="badge ok">letto</span>' : ''}</span><select class="inp" name="ferieUnita"><option value="">Riconosci da solo</option><option value="ore" ${(found.ferieUnita || b.ferieUnita) === 'ore' ? 'selected' : ''}>Ore</option><option value="gg" ${(found.ferieUnita || b.ferieUnita) === 'gg' ? 'selected' : ''}>Giorni</option></select></label>` : '')).join('')}</div>
   <label class="field"><span>Note</span><textarea class="inp" name="note">${esc(b.note || '')}</textarea></label></details>
   <div class="btns" style="margin-top:14px"><button type="button" class="btn ghost" data-x="cancel">Annulla</button><button class="btn" type="submit">Salva</button></div></form>`;
   const sh = openSheet(h); const form = $('form', sh);
@@ -177,7 +180,7 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
     e.preventDefault(); const fd = new FormData(form);
     const rec = pref.id ? S.buste.find((x) => x.id === pref.id) : { id: uid() };
     rec.jobId = fd.get('jobId') || null; rec.ym = fd.get('ym'); rec.tipo = fd.get('tipo'); rec.note = fd.get('note') || '';
-    CAMPI_BUSTA.forEach(([k]) => { rec[k] = toNum(fd.get(k)); });
+    CAMPI_BUSTA.forEach(([k]) => { rec[k] = toNum(fd.get(k)); }); rec.ferieUnita = fd.get('ferieUnita') || null;
     if (!rec.ym) { toast('Indica il mese'); return; }
     if (fileRec) { rec.fileId = fileRec.id; rec.testo = (fileRec.testo || '').slice(0, 20000); }
     if (!pref.id) S.buste.push(rec);
@@ -287,7 +290,7 @@ function viewLavoro(id) {
     <div class="kv"><span class="k">Buste archiviate</span><span class="v">${bs.length}</span></div>
     ${bs.length ? `<div class="kv"><span class="k">Netto totale</span><span class="v">${eur(totN)}</span></div>` : ''}${totL ? `<div class="kv"><span class="k">Lordo totale</span><span class="v">${eur(totL)}</span></div>` : ''}
     <div class="kv"><span class="k">TFR maturato (stima) ${info('tfr')}</span><span class="v">${eur(tfrStimato(j))}</span></div>
-    ${sd ? `<div class="kv"><span class="k">Ferie residue</span><span class="v">${num(sd.ferie, 2)} gg</span></div><div class="kv"><span class="k">Permessi residui</span><span class="v">${num(sd.permessi, 1)} h</span></div>` : ''}</div>`;
+    ${sd ? `<div class="kv"><span class="k">Ferie residue</span><span class="v">${fmtFerie(sd.ferie, sd.oreGiorno)}</span></div><div class="kv"><span class="k">Permessi residui</span><span class="v">${num(sd.permessi, 1)} h</span></div>` : ''}</div>`;
   if (bs.length) h += `<div class="card"><h2>Buste</h2><div class="list">${bs.map((b) => `<a class="li" href="#busta-${b.id}"><div class="grow"><div class="t">${ymLabel(b.ym)}${b.tipo !== 'mensile' ? ' · ' + b.tipo : ''}</div></div><div class="amt">${eur(b.netto)}</div><span class="chev">${ic.chev}</span></a>`).join('')}</div></div>`;
   h += `<button class="btn danger block" data-act="job-del" data-id="${j.id}">${ic.trash} Elimina lavoro</button>`;
   if (c.stima) h += `<p class="note">* Minimo ricostruito o precedente alla tabella in vigore: stima.</p>`;
@@ -462,7 +465,10 @@ function viewTurni() {
   const payYM = S.profilo.variabiliMeseSucc ? addYM(turniYM, 1) : turniYM; const st = stima(j, payYM);
   if (st && tot) h += `<div class="card"><h2><span class="grow">Busta di ${meseDi(payYM)}</span><span class="badge a">stima</span></h2><div class="big" style="font-size:34px">${eur(st.res.netto)}</div><div class="muted small">lordo ${eur(st.res.lordo)}${st.v ? ` · di cui variabili ${eur(st.v.totale)}` : ''}</div><button class="btn sm ghost" style="margin-top:12px" data-act="dettaglio-stima" data-ym="${payYM}" data-job="${j.id}">Come ci arrivo</button>${S.profilo.variabiliMeseSucc ? '<p class="note">Le ore di questo mese vengono pagate nella busta del mese dopo.</p>' : ''}</div>`;
   const sd = saldi(j);
-  if (sd) h += `<div class="card"><h2>Ferie e permessi</h2><div class="kv"><span class="k">Ferie residue oggi ${info('ferie')}</span><span class="v">${num(sd.ferie, 2)} gg</span></div><div class="kv"><span class="k">Permessi residui oggi ${info('permessi')}</span><span class="v">${num(sd.permessi, 1)} h</span></div><div class="kv"><span class="k">Maturano all'anno</span><span class="v">${sd.annui.ferieGiorni} gg · ${num(sd.annui.rolOre + sd.annui.exFestOre, 1)} h</span></div>${sd.annui.rolOre === 0 ? '<p class="note">Nei primi 2 anni maturano solo le ore di ex festività (in proporzione all’orario).</p>' : ''}</div>`;
+  if (sd) { const m = sd.mensili; const pt = sd.annui;
+    h += `<div class="card"><h2>Ferie e permessi</h2><div class="kv"><span class="k">Ferie residue oggi ${info('ferie')}</span><span class="v">${fmtFerie(sd.ferie, sd.oreGiorno)}</span></div><div class="kv"><span class="k">Permessi residui oggi ${info('permessi')}</span><span class="v">${num(sd.permessi, 1)} h</span></div>${sd.rolBusta != null || sd.exFestBusta != null ? `<p class="small muted" style="margin:4px 0 8px">Nell'ultima busta (${meseDi(sd.da)}): ${[sd.rolBusta != null ? `ROL ${num(sd.rolBusta, 2)} h` : '', sd.exFestBusta != null ? `ex festività ${num(sd.exFestBusta, 2)} h` : ''].filter(Boolean).join(' · ')}</p>` : ''}
+      <div class="kv"><span class="k">Ogni mese maturi</span><span class="v">${num(m.ferieOre, 2)} h di ferie · ${num(m.rol + m.exFest, 2)} h di permessi</span></div><div class="kv"><span class="k">In un anno</span><span class="v">${pt.ferieGiorni} gg (${num(pt.ferieGiorni * sd.oreGiorno, 1)} h) · ROL ${num(pt.rolOre, 1)} h · ex fest. ${num(pt.exFestOre, 1)} h</span></div>
+      <p class="note">Una giornata di ferie vale ${num(sd.oreGiorno, 2)} h (il tuo orario settimanale diviso 6, perché le ferie si contano su 6 giorni).${pt.rolOre === 0 ? ' Nei primi 2 anni maturano solo le ex festività; i ROL arrivano dal 3° anno (metà) e sono interi dal 5°.' : ''}</p></div>`; }
   return h;
 }
 function giornoSheet(k, pre = null, onDone = null) {

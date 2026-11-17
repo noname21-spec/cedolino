@@ -90,22 +90,38 @@ function stima(j, ym) {
   return { j, ym, c, base, v, cl, vym, aggiuntiva, ordinario, Rannuo, res, voci, giorniAttivi, chiamata };
 }
 
-/** Saldi ferie/permessi stimati a una data (default oggi) */
+/* ---- ferie e permessi: unità di misura ---- */
+/** ore di una giornata di ferie: 26 giorni l'anno = settimana di 6 giorni (commercio, turismo…), 22 = settimana di 5 */
+function oreGiornoFerie(j, ym) { const c = E.contratto(j, ym || curYM()); const pa = E.permessiAnnui(j, (ym || curYM()) + '-15'); return (c.oreSett || 40) / ((pa.ferieGiorni || 26) >= 24 ? 6 : 5); }
+/** in che unità la busta conta le ferie: dichiarata, letta, oppure dedotta dai numeri */
+function unitaFerie(b, j) {
+  if (b.ferieUnita) return b.ferieUnita;
+  if (b.ferieMat != null && b.ferieMat > 0) return b.ferieMat > 3.3 ? 'ore' : 'gg';
+  if (b.ferieRes == null) return 'gg';
+  if (j) { const og = oreGiornoFerie(j, b.ym); const mesi = j.inizio ? Math.max(1, (Number(b.ym.slice(0, 4)) - Number(j.inizio.slice(0, 4))) * 12 + Number(b.ym.slice(5, 7)) - Number(j.inizio.slice(5, 7)) + 1) : 12; const maxGG = Math.min(60, mesi * 26 / 12 + 30); if (b.ferieRes > maxGG) return 'ore'; if (og > 1.5 && b.ferieRes > 45) return 'ore'; }
+  return b.ferieRes > 45 ? 'ore' : 'gg';
+}
+const ferieOreDi = (b, j) => (b.ferieRes == null ? null : unitaFerie(b, j) === 'ore' ? b.ferieRes : b.ferieRes * oreGiornoFerie(j, b.ym));
+const permTot = (b) => { const v = [b.rolRes, b.exFestRes, b.permessiRes].filter((x) => x != null); return v.length ? v.reduce((a, x) => a + x, 0) : null; };
+const fmtFerie = (gg, og) => `${num(gg, 1)} gg${og > 0 ? ` · ${num(gg * og, 1)} h` : ''}`;
+
+/** Saldi ferie/permessi stimati a una data (default oggi). Le ferie sono in giorni (ferieOre in ore), i permessi in ore. */
 function saldi(j, alla) {
   if (!j || j.tipo === 'chiamata') return null;
   const oggi = alla || todayISO(); const cur = oggi.slice(0, 7);
-  const pa = E.permessiAnnui(j, oggi);
-  let baseYM, ferie, perm;
-  const ultime = S.buste.filter((b) => b.jobId === j.id && (b.ferieRes != null || b.permessiRes != null)).sort((a, b) => (a.ym < b.ym ? 1 : -1));
-  if (ultime.length) { baseYM = ultime[0].ym; ferie = ultime[0].ferieRes || 0; perm = ultime[0].permessiRes || 0; }
-  else if (j.resData) { baseYM = j.resData.slice(0, 7); ferie = toNum(j.resFerie) || 0; perm = toNum(j.resPermessi) || 0; }
-  else { if (!j.inizio) return null; baseYM = addYM(j.inizio.slice(0, 7), -1); ferie = 0; perm = 0; }
+  const pa = E.permessiAnnui(j, oggi); const og = oreGiornoFerie(j, cur);
+  let baseYM, ferieH, perm, rol = null, exf = null;
+  const ultime = S.buste.filter((b) => b.jobId === j.id && (b.ferieRes != null || permTot(b) != null)).sort((a, b) => (a.ym < b.ym ? 1 : -1));
+  if (ultime.length) { const b = ultime[0]; baseYM = b.ym; ferieH = ferieOreDi(b, j) || 0; perm = permTot(b) || 0; rol = b.rolRes ?? null; exf = b.exFestRes ?? null; }
+  else if (j.resData) { baseYM = j.resData.slice(0, 7); ferieH = (toNum(j.resFerie) || 0) * og; perm = toNum(j.resPermessi) || 0; }
+  else { if (!j.inizio) return null; baseYM = addYM(j.inizio.slice(0, 7), -1); ferieH = 0; perm = 0; }
   let ym = addYM(baseYM, 1); let mesi = 0;
   while (ym <= cur) { if (attivoNelMese(j, ym) >= 15 && (ym < cur || alla)) mesi++; ym = addYM(ym, 1); }
   const t = S.turni[j.id] || {}; const endBase = `${baseYM}-31`;
   let fU = 0, pU = 0; const oreG = E.contratto(j, cur).oreSett / (Number(j.giorniSett) || 5);
-  for (const [k, g] of Object.entries(t)) { if (k <= endBase || k > oggi) continue; if (g.tipo === 'ferie') fU++; else if (g.tipo === 'permesso') pU += Number(g.ore) || oreG; }
-  return { ferie: ferie + mesi * pa.ferieGiorni / 12 - fU, permessi: perm + mesi * (pa.rolOre + pa.exFestOre) / 12 - pU, da: baseYM, annui: pa };
+  for (const [k, g] of Object.entries(t)) { if (k <= endBase || k > oggi) continue; if (g.tipo === 'ferie') fU += Number(g.ore) || og; else if (g.tipo === 'permesso') pU += Number(g.ore) || oreG; }
+  const fH = ferieH + mesi * pa.ferieGiorni * og / 12 - fU;
+  return { ferie: og > 0 ? fH / og : 0, ferieOre: fH, oreGiorno: og, permessi: perm + mesi * (pa.rolOre + pa.exFestOre) / 12 - pU, rolBusta: rol, exFestBusta: exf, da: baseYM, annui: pa, mensili: { ferieOre: pa.ferieGiorni * og / 12, ferieGG: pa.ferieGiorni / 12, rol: pa.rolOre / 12, exFest: pa.exFestOre / 12 } };
 }
 
 /** TFR maturato fino a una data, con rivalutazione annua (1,5% + 75% inflazione, stimata all'1,5%) */
@@ -165,15 +181,43 @@ function controlla(b) {
     if (R <= 15000 && !/integrativ|t\.?\s*i\.?\s*r|ex\s*bonus|bonus\s*100|l\.?\s*21\/2020/i.test(T)) out.push({ s: 'info', t: 'Trattamento integrativo non trovato', p: 'Con questo reddito di solito spettano circa 100 € al mese (ex bonus Renzi). Non trovo la voce nel testo della busta.', lettera: 'Non trovo in busta il trattamento integrativo (ex bonus 100 €): mi spetta con il mio reddito?' });
     if (st.cl && (st.cl.festive + st.cl.domenicali + st.cl.notturne) > 0 && (red25 == null || red25 <= 40000) && !/sostitut|detass|15\s*%/i.test(T)) out.push({ s: 'info', t: 'Detassazione 15% non trovata', p: 'Nel 2026 le maggiorazioni per lavoro festivo, notturno e nel giorno di riposo sono tassate al 15% (fino a 1.500 €) se il reddito 2025 non supera 40.000 €.', lettera: 'Per le maggiorazioni di festivi e domeniche non vedo applicata l’imposta sostitutiva del 15% prevista per il 2026: è corretto?' });
   }
-  if (b.ferieRes != null) {
-    const prev = S.buste.filter((x) => x.jobId === b.jobId && x.ym < b.ym && x.ferieRes != null).sort((a, c) => (a.ym < c.ym ? 1 : -1))[0];
-    if (prev && prev.ym === addYM(b.ym, -1)) {
-      const used = Object.entries(S.turni[b.jobId] || {}).filter(([k, g]) => k.startsWith(b.ym) && g.tipo === 'ferie').length;
-      const att = prev.ferieRes + 26 / 12 - used;
-      if (Math.abs(att - b.ferieRes) > 1.2) out.push({ s: 'info', t: 'Saldo ferie da verificare', p: `Partendo da ${num(prev.ferieRes, 2)} giorni il mese scorso mi aspettavo circa ${num(att, 2)} giorni, in busta ${num(b.ferieRes, 2)}. Alcune buste indicano le ferie in ore.`, lettera: `Il saldo ferie (${num(b.ferieRes, 2)}) non mi torna rispetto al mese precedente (${num(prev.ferieRes, 2)}): potreste verificarlo?` });
+  out.push(...controllaFerie(b, j));
+  if (!out.length) out.push({ s: 'info', t: 'Pochi dati per il controllo', p: 'Inserisci almeno lordo, netto e contributi (o carica il PDF) per avere un controllo completo.' });
+  return out;
+}
+
+/** Ferie, ROL ed ex festività: maturazione del mese e saldi rispetto al CCNL e alla busta precedente */
+function controllaFerie(b, j) {
+  const out = []; if (!j || j.tipo === 'chiamata' || b.tipo !== 'mensile') return out;
+  if (b.ferieRes == null && b.ferieMat == null && b.rolMat == null && b.exFestMat == null && b.permessiMat == null && permTot(b) == null) return out;
+  const pa = E.permessiAnnui(j, b.ym + '-15'); const og = oreGiornoFerie(j, b.ym); const u = unitaFerie(b, j);
+  const pieno = attivoNelMese(j, b.ym) >= 15; const p = E.contratto(j, b.ym).p;
+  const att = { fer: (pa.ferieGiorni / 12) * (u === 'ore' ? og : 1), rol: pa.rolOre / 12, exf: pa.exFestOre / 12 };
+  const un = (x) => (x === 'ore' ? 'h' : 'gg');
+  const righe = []; const meno = []; const piu = [];
+  const cmp = (nome, letto, atteso, unita) => {
+    if (letto == null || !pieno) return; const tol = Math.max(0.06, atteso * 0.06);
+    righe.push(`${nome} +${num(letto, 2)} ${un(unita)}`);
+    if (letto < atteso - tol) meno.push({ nome, letto, atteso, unita }); else if (letto > atteso + tol) piu.push({ nome, letto, atteso, unita });
+  };
+  cmp('Ferie', b.ferieMat, att.fer, u); cmp('ROL', b.rolMat, att.rol, 'ore'); cmp('Ex festività', b.exFestMat, att.exf, 'ore');
+  if (b.rolMat == null && b.exFestMat == null) cmp('Permessi', b.permessiMat, att.rol + att.exf, 'ore');
+  const anz = j.inizio ? (new Date(b.ym + '-15') - new Date(j.inizio)) / (365.25 * 864e5) : 99;
+  const notaRol = (j.ccnl || 'commercio') === 'commercio' && j.inizio > '2011-02-26' && anz < 4 ? ` Nel Commercio, per chi è assunto dopo il 2011, i ROL non maturano nei primi 2 anni e sono a metà dal 3° al 4° (${anz < 2 ? 'tu sei nei primi 2' : 'tu sei a metà'}).` : '';
+  const attesi = `Ogni mese dovresti maturare ${num(att.fer, 2)} ${un(u)} di ferie${u === 'ore' ? ` (26 giorni l'anno da ${num(og, 2)} h)` : ''}, ${num(att.rol, 2)} h di ROL e ${num(att.exf, 2)} h di ex festività${p < 1 ? ', in proporzione al tuo part-time' : ''}.`;
+  if (meno.length) out.push({ s: 'warn', t: `Maturano meno ${meno.length === 1 ? meno[0].nome.toLowerCase() : 'ferie/permessi'} del previsto`, p: meno.map((m) => `${m.nome}: in busta +${num(m.letto, 2)} ${un(m.unita)}, mi aspettavo +${num(m.atteso, 2)} ${un(m.unita)}.`).join(' ') + ' ' + attesi + notaRol + ' Se nel mese hai avuto assenze non retribuite, aspettativa o meno di 15 giorni di lavoro, è normale.', lettera: `Nella busta di ${meseDi(b.ym)} ${meno.map((m) => `le ${m.nome.toLowerCase()} maturate sono ${num(m.letto, 2)} ${m.unita === 'ore' ? 'ore' : 'giorni'} invece di circa ${num(m.atteso, 2)}`).join(' e ')}: potreste verificare la maturazione rispetto al CCNL e al mio orario?` });
+  else if (righe.length) out.push({ s: 'ok', t: 'Ferie e permessi maturati correttamente', p: `Questo mese: ${righe.join(', ')}.${piu.length ? ` ${piu.map((m) => m.nome).join(' e ')}: ne maturi più del minimo del CCNL (${num(piu[0].atteso, 2)} ${un(piu[0].unita)}), meglio per te.` : ''}${notaRol}` });
+  // saldo rispetto alla busta del mese prima
+  const prev = S.buste.filter((x) => x.jobId === b.jobId && x.ym === addYM(b.ym, -1) && x.tipo === 'mensile')[0];
+  if (prev && b.ferieRes != null && prev.ferieRes != null && b.ferieMat == null && pieno) {
+    const giorni = Object.entries(S.turni[b.jobId] || {}).filter(([k, g]) => k.startsWith(b.ym) && g.tipo === 'ferie');
+    const usateH = giorni.reduce((a, [, g]) => a + (Number(g.ore) || og), 0);
+    const daH = ferieOreDi(prev, j), aH = ferieOreDi(b, j); const attH = daH + pa.ferieGiorni * og / 12 - usateH;
+    if (Math.abs(attH - aH) > Math.max(1, og * 0.6)) {
+      const conv = (h) => (u === 'ore' ? `${num(h, 2)} h` : `${num(h / og, 2)} gg`);
+      out.push({ s: 'info', t: 'Saldo ferie da verificare', p: `Il mese scorso avevi ${conv(daH)}; aggiungendo i ratei (${conv(pa.ferieGiorni * og / 12)})${usateH ? ` e togliendo le ferie segnate nei turni (${conv(usateH)})` : ''} mi aspettavo circa ${conv(attH)}, in busta ${conv(aH)}. Se hai fatto ferie non segnate nei turni, è normale.`, lettera: `Il saldo ferie della busta di ${meseDi(b.ym)} (${conv(aH)}) non mi torna rispetto al mese precedente (${conv(daH)}): potreste verificarlo?` });
     }
   }
-  if (!out.length) out.push({ s: 'info', t: 'Pochi dati per il controllo', p: 'Inserisci almeno lordo, netto e contributi (o carica il PDF) per avere un controllo completo.' });
   return out;
 }
 
@@ -317,8 +361,8 @@ const GLOSSARIO = [
 const TERMS = {
   lordo: ['Lordo', 'Quanto guadagni prima delle trattenute: paga base, maggiorazioni, mensilità aggiuntive.'],
   netto: ['Netto', 'Quello che ricevi davvero sul conto: lordo meno contributi, IRPEF e addizionali, più eventuali bonus fiscali.'],
-  ferie: ['Ferie residue', 'I giorni di ferie che ti restano. Maturano ogni mese (2,17 giorni nel Commercio) e scendono quando ne usi. Parto dall’ultima busta caricata, poi aggiungo i ratei e tolgo quelle segnate nei turni.'],
-  permessi: ['Permessi residui', 'Ore di permesso retribuito (ROL ed ex festività) che ti restano. Quelle non usate entro il 30 giugno dell’anno dopo vengono pagate in busta.'],
+  ferie: ['Ferie residue', 'Le ferie che ti restano. Nel Commercio sono 26 giorni l’anno (2,17 al mese) su una settimana di 6 giorni: una giornata vale 1/6 del tuo orario settimanale (con 24 h a settimana = 4 h, quindi 8,67 h al mese). Molte buste le contano in ore: te le mostro in tutti e due i modi. Parto dall’ultima busta, aggiungo i ratei e tolgo quelle segnate nei turni.'],
+  permessi: ['Permessi residui', 'Ore di permesso retribuito che ti restano: ROL (riduzione orario) ed ex festività. Nel Commercio le ex festività sono 32 h l’anno e i ROL 56 h (72 nelle aziende con più di 15 dipendenti), in proporzione al part-time; per chi è assunto dopo il 2011 i ROL partono dal 3° anno (metà) e sono interi dal 5°. Quelle non usate entro il 30 giugno dell’anno dopo vengono pagate in busta.'],
   tfr: ['TFR', 'La "liquidazione": ogni mese l’azienda accantona circa 1/13,5 di quello che guadagni. Te la paga quando il rapporto finisce. Il valore qui è una stima con la rivalutazione annuale.'],
   stima: ['Stima della busta', 'Calcolo il lordo dal tuo contratto, aggiungo le ore extra dai turni e applico contributi, IRPEF 2026, detrazioni e bonus fiscali. La busta reale può cambiare per conguagli, arretrati o voci aziendali.'],
   naspi: ['NASpI', 'L’indennità di disoccupazione dell’INPS. Spetta se perdi il lavoro senza dimetterti (scadenza, licenziamento) e hai almeno 13 settimane di contributi negli ultimi 4 anni. Dura metà delle settimane lavorate e dal 6° mese scende del 3% al mese.'],

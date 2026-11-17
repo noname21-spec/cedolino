@@ -121,6 +121,98 @@ function candidati(rows, lab) {
 function colonna(rows, re) { const l = trovaEtichette(rows, re)[0]; return l ? { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y } : null; }
 const nellaColonna = (r, col) => importiRiga(r).filter((it) => it.x + it.w >= col.x0 - 30 && it.x <= col.x1 + 30).sort((a, b) => Math.abs((a.x + a.w) - col.x1) - Math.abs((b.x + b.w) - col.x1))[0];
 
+/* ---- ferie, ROL ed ex festività: tabelle in tutte le forme ---- */
+const FP_TIPI = [['exf', /ex[\s.\-]*f(?:est|\.)|festivit[aà]\s*(?:sopp|sopr|abol)|f(?:est)?\.?\s*sopp/i], ['rol', /\br\.?\s?o\.?\s?l\.?\b|riduz\w*\s*(?:d\w*\s*)?orario|\brid\.?\s*or/i], ['fer', /\bferie\b/i], ['perm', /permess|\bperm\.?\b/i]];
+const FP_STATI = [['ap', /res(?:iduo|id)?\.?\s*(?:a\.?\s*p\b\.?|anno\s*prec\w*|prec\w*)|anno\s*prec\w*|\ba\.\s?p\.(?!\w)|\bres\.?\s*ap\b/i], ['god', /godut\w*|\bgod\.?(?![a-z])|fruit\w*|usufruit\w*|utilizzat\w*|\bgoduto\b/i], ['mat', /matur\w*|\bmat\.?(?![a-z])/i], ['sal', /\bsaldo\b|residu[oie]\b|\bresid\.?(?![a-z])|da\s*godere|disponibil\w*|\bres\.?(?![a-z])/i]];
+const fpTipo = (str) => { const t = FP_TIPI.filter(([, re]) => re.test(str)).map(([k]) => k); if (t.includes('rol') && t.includes('exf')) return 'perm'; /* "Permessi ROL/Ex fest." insieme */ return t[0] || null; };
+const fpStato = (str) => { for (const [k, re] of FP_STATI) if (re.test(str)) return k; return null; };
+const fpUnita = (str) => (/\(\s*(?:ore|hh|h)\s*\)|\bore\b|\bhh\b/i.test(str) ? 'ore' : /\(\s*(?:gg|giorni|g)\s*\)|\bgg\b|\bgiorni\b|\bgiorn/i.test(str) ? 'gg' : null);
+/** escludo voci pagate (competenze) e righe che non sono saldi */
+const FP_NO = /non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|retribu|€|\bz\d{4}|\b[a-z]\d{4,}\b|festivit[aà]\s*(?:god|lavor)|lavoro\s*fest/i;
+function fpChiudi(R) {
+  for (const k of Object.keys(R)) { const t = R[k]; if (t.sal == null && (t.mat != null || t.ap != null)) t.sal = Math.round(((t.ap || 0) + (t.mat || 0) - (t.god || 0)) * 100) / 100; if (t.sal == null && t.mat == null) delete R[k]; }
+  return R;
+}
+function leggiFerieLayout(rows) {
+  const R = {}; const metti = (tipo, stato, v, u) => { if (v == null || !tipo || !stato) return; const t = (R[tipo] = R[tipo] || {}); if (t[stato] == null) t[stato] = v; if (u && !t.u) t.u = u; };
+  const testa = (r) => { const n = r.items.find((it) => IMPORTO_RE.test(it.s)); return r.items.filter((it) => !n || it.x < n.x).map((it) => it.s).join(' '); };
+  // raggruppo le parole vicine ("Res." + "A.P." = una sola intestazione)
+  const gruppi = (r) => { const g = []; for (const it of r.items) { if (IMPORTO_RE.test(it.s)) { g.push(null); continue; } const last = g[g.length - 1]; if (last && it.x - last.x1 < 7) { last.s += ' ' + it.s; last.x1 = it.x + it.w; } else g.push({ s: it.s, x0: it.x, x1: it.x + it.w }); } return g.filter(Boolean); };
+  const etich = (r, kind) => gruppi(r).map((g) => ({ ...g, k: kind === 'stato' ? fpStato(g.s) : fpTipo(g.s) })).filter((g) => g.k);
+  // A) stati in colonna (Res. A.P. | Maturato | Goduto | Saldo), una riga per tipo
+  for (const H of rows) {
+    if (importiRiga(H).length) continue; const cols = etich(H, 'stato'); if (new Set(cols.map((c) => c.k)).size < 2) continue;
+    const uH = fpUnita(H.str);
+    for (const r of rows) {
+      if (r.p !== H.p || r.y >= H.y || H.y - r.y > 150 || !importiRiga(r).length) continue;
+      const lab = testa(r); const tipo = fpTipo(lab); if (!tipo || FP_NO.test(lab)) continue;
+      for (const c of cols) { const it = nellaColonna(r, c); if (it) metti(tipo, c.k, valImp(it.s), fpUnita(lab) || uH); }
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  // B) tipi in colonna (Ferie | ROL | Ex fest.), una riga per stato
+  for (const H of rows) {
+    if (importiRiga(H).length) continue; const cols = etich(H, 'tipo'); if (new Set(cols.map((c) => c.k)).size < 2) continue;
+    for (const r of rows) {
+      if (r.p !== H.p || r.y >= H.y || H.y - r.y > 150 || !importiRiga(r).length) continue;
+      const lab = testa(r); const stato = fpStato(lab); if (!stato || FP_NO.test(lab) || fpTipo(lab)) continue;
+      for (const c of cols) { const it = nellaColonna(r, c); if (it) metti(c.k, stato, valImp(it.s), fpUnita(c.s) || fpUnita(H.str)); }
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  return R;
+}
+function leggiFerieTesto(L) {
+  const R = {}; const metti = (tipo, stato, v, u) => { if (v == null || !tipo || !stato) return; const t = (R[tipo] = R[tipo] || {}); if (t[stato] == null) t[stato] = v; if (u && !t.u) t.u = u; };
+  const nums = (l) => importiIn(l);
+  const parti = (l) => l.split(/\s{2,}|\t|\|/).map((x) => x.trim()).filter(Boolean);
+  // 1) etichette in riga: "Ferie: res. AP 4,33 mat. 2,17 god. 1,00 saldo 5,50"
+  for (const l of L) {
+    const tipo = fpTipo(l.split(/\d/)[0] || ''); if (!tipo || FP_NO.test(l)) continue;
+    const re = new RegExp(`(${FP_STATI.map(([, r]) => r.source).join('|')})\\s*[:=]?\\s*(-?\\d[\\d.]*,\\d{1,2})`, 'gi'); let m; let n = 0;
+    while ((m = re.exec(l))) { metti(tipo, fpStato(m[1]), pnum(m[m.length - 1]), fpUnita(l)); n++; }
+    if (!n && /saldo|resid/i.test(l) && nums(l).length) metti(tipo, 'sal', nums(l).slice(-1)[0], fpUnita(l));
+  }
+  if (Object.keys(R).length) return fpChiudi(R);
+  // 2) intestazione con gli stati, poi una riga per tipo
+  for (let i = 0; i < L.length; i++) {
+    if (nums(L[i]).length) continue;
+    const st = []; const rx = new RegExp(FP_STATI.map(([, r]) => `(${r.source})`).join('|'), 'gi'); let m;
+    while ((m = rx.exec(L[i]))) { const k = fpStato(m[0]); if (k && !st.includes(k)) st.push(k); }
+    if (st.length < 2) continue; const uH = fpUnita(L[i]);
+    for (let k = i + 1; k < Math.min(L.length, i + 9); k++) {
+      const v = nums(L[k]); if (!v.length) continue; const lab = L[k].split(/-?\d/)[0]; const tipo = fpTipo(lab); if (!tipo || FP_NO.test(lab)) continue;
+      const vv = v.length >= st.length ? v.slice(-st.length) : null;
+      if (vv) st.forEach((s2, q) => metti(tipo, s2, vv[q], fpUnita(lab) || uH)); else metti(tipo, 'sal', v[v.length - 1], fpUnita(lab) || uH);
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  // 3) intestazione con i tipi, poi una riga per stato
+  for (let i = 0; i < L.length; i++) {
+    if (nums(L[i]).length) continue;
+    const hit = []; const rx = new RegExp(FP_TIPI.map(([, r]) => `(${r.source})`).join('|'), 'gi'); let m;
+    while ((m = rx.exec(L[i]))) { const k = fpTipo(m[0]); if (k) hit.push({ k, a: m.index, b: m.index + m[0].length }); }
+    // "Permessi ROL" / "Permessi ex fest." sono una sola colonna
+    const tp = hit.filter((h, q) => !(h.k === 'perm' && hit[q + 1] && hit[q + 1].a - h.b <= 3)).map((h) => h.k).filter((k, q, arr) => arr.indexOf(k) === q);
+    if (tp.length < 2) continue;
+    for (let k = i + 1; k < Math.min(L.length, i + 7); k++) {
+      const v = nums(L[k]); if (!v.length) continue; const lab = L[k].split(/-?\d/)[0]; const stato = fpStato(lab); if (!stato || fpTipo(lab)) continue;
+      if (v.length >= tp.length) tp.forEach((t, q) => metti(t, stato, v.slice(-tp.length)[q], fpUnita(L[i])));
+    }
+    if (Object.keys(R).length) return fpChiudi(R);
+  }
+  return R;
+}
+/** Dalla tabella ai campi della busta */
+function ferieInBusta(R, found) {
+  const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
+  if (R.fer) { if (found.ferieRes == null && R.fer.sal != null) found.ferieRes = r2(R.fer.sal); if (found.ferieMat == null && R.fer.mat != null) found.ferieMat = r2(R.fer.mat); if (R.fer.u) found.ferieUnita = R.fer.u; }
+  if (R.rol) { if (found.rolRes == null && R.rol.sal != null) found.rolRes = r2(R.rol.sal); if (found.rolMat == null && R.rol.mat != null) found.rolMat = r2(R.rol.mat); }
+  if (R.exf) { if (found.exFestRes == null && R.exf.sal != null) found.exFestRes = r2(R.exf.sal); if (found.exFestMat == null && R.exf.mat != null) found.exFestMat = r2(R.exf.mat); }
+  if (R.perm) { if (found.permessiRes == null && R.perm.sal != null) found.permessiRes = r2(R.perm.sal); if (found.permessiMat == null && R.perm.mat != null) found.permessiMat = r2(R.perm.mat); }
+  if (!found.ferieUnita && R.fer) { const m = R.fer.mat, sl = R.fer.sal; if (m != null && m > 0) found.ferieUnita = m > 3.3 ? 'ore' : 'gg'; else if (sl != null && sl > 45) found.ferieUnita = 'ore'; }
+}
+
 function parseBusta(text) {
   const L = text.split(/\n/).map((l) => l.trim()).filter(Boolean);
   const found = {}; const appresi = [];
@@ -167,15 +259,8 @@ function parseBusta(text) {
       if (k === 'contributi' && righeContr.size > 1) vals.unshift([...righeContr.values()].reduce((s, v) => s + v, 0));
       if (vals.length) C[k] = [...new Set(vals)];
     }
-    // tabella ferie/permessi: riga × colonna "Saldo/Residuo"
-    const colSaldo = (() => { const ls = trovaEtichette(rows, /\bsaldo\b|residu[oie](?!\s*a\.?\s*p)(?!\s*anno)(?!\s*prec)|spettant|da\s*godere|disponibil/i).filter((l) => !/prec|a\.\s*p|anno\s*prec/i.test(l.r.str.slice(l.its[0].o, l.its[l.its.length - 1].o + l.its[l.its.length - 1].s.length + 8))); if (!ls.length) return null; const l = ls.sort((a, b) => b.x1 - a.x1)[0]; return { x0: l.x0, x1: l.x1, p: l.r.p, y: l.r.y }; })();
-    const tab = (re) => {
-      const labs = trovaEtichette(rows, re, /god(?:ute|uto)\s*$|matur|non\s*god|liquid|indennit|\bratei\b|monetizz/i).filter((l) => !/non\s*god|liquid|indennit|\bratei\b|monetizz/i.test(l.r.str)).filter((l, i, arr) => arr.findIndex((q) => q.r === l.r) === i); let tot = null;
-      for (const lab of labs) { const its = importiRiga(lab.r).filter((it) => it.x >= lab.x1 - 2); if (!its.length) continue; const it = colSaldo && colSaldo.p === lab.r.p ? nellaColonna(lab.r, colSaldo) || its[its.length - 1] : its[its.length - 1]; tot = (tot || 0) + valImp(it.s); }
-      return tot;
-    };
-    if (found.ferieRes == null) { const v = tab(/^\s*ferie\b|\bferie\b(?!\s*god)/i); if (v != null) found.ferieRes = v; }
-    if (found.permessiRes == null) { const v = tab(/permess|\br\.?\s?o\.?\s?l\.?\b|ex[\s.-]*fest/i); if (v != null) found.permessiRes = v; }
+    // tabella ferie / ROL / ex festività (in qualsiasi orientamento)
+    ferieInBusta(leggiFerieLayout(rows), found);
   }
   // lettura per righe (foto, PDF senza posizioni): tutti i valori plausibili
   // titoli di colonna tipici delle buste (per associare i valori della riga sotto in ordine)
@@ -218,10 +303,8 @@ function parseBusta(text) {
   pick('addReg', (v) => v >= 0 && v < 400); pick('addCom', (v) => v >= 0 && v < 300);
   pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
   pick('oreExtra', (v) => v > 0 && v <= 120);
-  // ferie e permessi senza posizioni: ultimo numero della riga
-  const nonSaldo = /non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i;
-  if (found.ferieRes == null) cercaEtichetta(L, found, 'ferieRes', /\bferie\b(?!\s*\/\s*permess)/i, { last: true, sameLine: true, not: nonSaldo });
-  if (found.permessiRes == null) cercaEtichetta(L, found, 'permessiRes', /permess|r\.?o\.?l\.?\b|ex\s*fest/i, { last: true, sameLine: true, not: /ferie\s*\/\s*permess|non\s*god|liquid|indennit|\bratei\b|monetizz|pagat|€/i });
+  // ferie e permessi senza posizioni (foto, testo): tabelle riconosciute dalle intestazioni
+  if (found.ferieRes == null && found.rolRes == null && found.exFestRes == null && found.permessiRes == null) ferieInBusta(leggiFerieTesto(L), found);
   const mesiRe = new RegExp(`\\b(${MESI.join('|')})\\s*[-/]?\\s*(20\\d{2})`, 'i');
   const pm = text.match(mesiRe);
   if (pm) found.ym = `${pm[2]}-${pad(MESI.indexOf(pm[1].toLowerCase()) + 1)}`;
