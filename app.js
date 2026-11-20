@@ -2319,10 +2319,10 @@ function render() {
   else if (base === 'anno') html = viewAnno(arg);
   else if (base === 'fine') html = viewFine(arg);
   else html = (V[base] || viewHome)();
-  app.innerHTML = `<div class="fade">${html}</div>`;
+  app.innerHTML = `<div class="fade${navDir ? (navDir > 0 ? ' swl' : ' swr') : ''}">${html}</div>`; navDir = 0;
   aggiornaBadge();
   const sec = { busta: 'buste', lavoro: 'lavori', cv: 'lavori' }[base] || base;
-  $$('.nav a').forEach((a) => a.classList.toggle('on', a.dataset.nav === sec));
+  navSync(sec);
   document.body.classList.toggle('no-nav', base === 'benvenuto');
   const pf = $('form[data-form="profilo"]');
   if (pf) { const sync = () => { const d = $('[data-reg]'); if (d) d.style.display = pf.regione.value === 'personalizzata' ? '' : 'none'; }; pf.regione.addEventListener('change', sync); sync(); }
@@ -2335,7 +2335,44 @@ function render() {
   });
 }
 let lastRoute = '';
-window.addEventListener('hashchange', () => { closeAllSheets(); const r = route(); if (r !== lastRoute) { lastRoute = r; render(); scrollTo(0, 0); } });
+/* barra delle sezioni: schede in alto, si scorre col dito per cambiare sezione, e mentre si scorre in giù si riduce a un'etichetta */
+const SEZ = ['home', 'buste', 'turni', 'lavori'], SEZN = { home: 'Home', buste: 'Buste', turni: 'Turni', lavori: 'Lavori' };
+let navDir = 0, navSec = 'home';
+function navSync(sec) {
+  const i = SEZ.indexOf(sec), nav = $('.nav'); navSec = sec;
+  $$('.nav a').forEach((a) => { const on = a.dataset.nav === sec; a.classList.toggle('on', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (nav) { nav.classList.toggle('fuori', i < 0); if (i >= 0) nav.style.setProperty('--ni', i); }
+  const m = $('.nav-mini'); if (m) { $('span', m).textContent = i >= 0 ? SEZN[sec] : 'Sezioni'; $('small', m).textContent = i >= 0 ? `${i + 1}/4` : ''; }
+}
+function navMin(on) { document.documentElement.classList.toggle('navmin', !!on); }
+(() => {
+  let lastY = scrollY, acc = 0;
+  addEventListener('scroll', () => {
+    const y = scrollY, d = y - lastY; lastY = y;
+    if (y < 60) { acc = 0; navMin(false); return; }
+    acc = (d > 0) === (acc > 0) ? acc + d : d;
+    if (acc > 24) navMin(true); else if (acc < -18) navMin(false);
+  }, { passive: true });
+  /* scorrere a destra o a sinistra cambia sezione (solo nelle quattro sezioni principali) */
+  let sx = 0, sy = 0, st = 0, ok = false;
+  const scorrevole = (el) => { for (let e = el; e && e !== app; e = e.parentElement) { const o = getComputedStyle(e).overflowX; if ((o === 'auto' || o === 'scroll') && e.scrollWidth > e.clientWidth + 2) return true; } return false; };
+  app.addEventListener('touchstart', (e) => {
+    const t = e.touches[0]; ok = e.touches.length === 1 && SEZ.includes(route()) && !$('.scrim.show') && !e.target.closest('input,textarea,select,.switch,[data-noswipe]') && !scorrevole(e.target);
+    sx = t.clientX; sy = t.clientY; st = Date.now();
+    if (sx < 20 || sx > innerWidth - 20) ok = false;
+  }, { passive: true });
+  app.addEventListener('touchend', (e) => {
+    if (!ok) return; ok = false; const t = e.changedTouches[0], dx = t.clientX - sx, dy = t.clientY - sy;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6 || Date.now() - st > 700) return;
+    const i = SEZ.indexOf(route()), j = i + (dx < 0 ? 1 : -1);
+    if (j < 0 || j >= SEZ.length) return;
+    location.hash = '#' + SEZ[j];
+  }, { passive: true });
+})();
+window.addEventListener('hashchange', () => {
+  closeAllSheets(); const r = route();
+  if (r !== lastRoute) { const a = SEZ.indexOf(lastRoute), b = SEZ.indexOf(r); navDir = a >= 0 && b >= 0 && a !== b ? Math.sign(b - a) : 0; lastRoute = r; render(); scrollTo(0, 0); navMin(false); }
+});
 
 /* ============ azioni ============ */
 const actions = {
@@ -2384,6 +2421,7 @@ const actions = {
   'dettaglio-stima'(el) { dettaglioStima(el.dataset.ym, el.dataset.job); },
   'calc-modo'(el) { calc.modo = el.dataset.m; render(); },
   tema(el) { S.tema = el.dataset.v; save(); applyTheme(); render(); },
+  'nav-apri'() { navMin(false); },
   stile(el) { S.stile = el.dataset.v; save(); applyTheme(); render(); },
   info(el) { const t = TERMS[el.dataset.k]; if (!t) return; const sh = openSheet(`<h3>${esc(t[0])}</h3><p class="lead" style="color:var(--text)">${esc(t[1])}</p><button class="btn block" data-x="ok">Ho capito</button>`); sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); }); },
   'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; save(); render(); toast(`Turno iniziato alle ${S.timbro.inizio}`); },
