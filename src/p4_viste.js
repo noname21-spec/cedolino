@@ -1,6 +1,6 @@
 
 /* ============ viste: elementi comuni ============ */
-const topbar = (title, sub, right = '', back = '') => `<div class="top">${back ? `<a class="iconbtn back" href="${back}" aria-label="Indietro">${ic.back}</a>` : ''}<h1>${title}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>${right}</div>`;
+const topbar = (title, sub, right = '', back = '') => `<div class="top">${back ? `<a class="iconbtn back" href="${back}" aria-label="Indietro">${ic.back}</a>` : ''}<h1 data-t="${String(title).replace(/<[^>]*>/g, '').replace(/"/g, '&quot;')}">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>${right}</div>`;
 const gearBtn = `<a class="iconbtn" href="#impostazioni" aria-label="Impostazioni">${ic.gear}</a>`;
 function accountBtn() {
   const m = (sbUser && sbUser.user_metadata) || {};

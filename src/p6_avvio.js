@@ -18,6 +18,9 @@ function viewImpostazioni() {
   <div class="fgrid"><label class="field"><span>Mese della 14ª</span><select class="inp" name="mese14"><option value="6" ${Number(P.mese14) === 6 ? 'selected' : ''}>Giugno</option><option value="7" ${Number(P.mese14) === 7 ? 'selected' : ''}>Luglio</option></select></label><label class="field"><span>Santo patrono (gg-mm)</span><input class="inp" name="patrono" value="${esc(P.patrono ? P.patrono.split('-').reverse().join('-') : '')}" placeholder="es. 04-10"></label></div>
   <label class="field"><span>Ricordami di caricare la busta dal giorno</span><input class="inp" inputmode="numeric" name="giornoBusta" value="${P.giornoBusta}"></label></div>
   <div class="sec-title">Aspetto</div><div class="card">
+  <div class="field" style="margin-bottom:6px"><span>Stile</span></div>
+  <div class="seg" style="margin-bottom:14px">${[['glitch', 'Glitch'], ['classico', 'Classico']].map(([v, l]) => `<button type="button" data-act="stile" data-v="${v}" class="${(S.stile === 'classico' ? 'classico' : 'glitch') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="field" style="margin-bottom:6px"><span>Tema</span></div>
   <div class="seg" style="margin-bottom:8px">${[['auto', 'Auto'], ['chiaro', 'Chiaro'], ['scuro', 'Notte blu'], ['nero', 'Nero']].map(([v, l]) => `<button type="button" data-act="tema" data-v="${v}" class="${S.tema === v ? 'on' : ''}">${l}</button>`).join('')}</div>
   <label class="check"><input type="checkbox" name="vetro" ${S.vetro ? 'checked' : ''} data-act="vetro"><span class="switch"></span><span class="grow">Effetto vetro</span></label></div>
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
@@ -295,6 +298,7 @@ const actions = {
   'dettaglio-stima'(el) { dettaglioStima(el.dataset.ym, el.dataset.job); },
   'calc-modo'(el) { calc.modo = el.dataset.m; render(); },
   tema(el) { S.tema = el.dataset.v; save(); applyTheme(); render(); },
+  stile(el) { S.stile = el.dataset.v; save(); applyTheme(); render(); },
   info(el) { const t = TERMS[el.dataset.k]; if (!t) return; const sh = openSheet(`<h3>${esc(t[0])}</h3><p class="lead" style="color:var(--text)">${esc(t[1])}</p><button class="btn block" data-x="ok">Ho capito</button>`); sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); }); },
   'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; save(); render(); toast(`Turno iniziato alle ${S.timbro.inizio}`); },
   'timbra-fine'() { const t = S.timbro; if (!t) return; const d = new Date(); turniJob = t.jobId; giornoSheet(t.data, { tipo: 'turno', inizio: t.inizio, fine: `${pad(d.getHours())}:${pad(d.getMinutes())}`, pausa: 0 }, () => { S.timbro = null; save(); toast('Turno salvato'); }); },
@@ -375,7 +379,7 @@ document.addEventListener('visibilitychange', async () => {
 
 /* ============ avvio ============ */
 async function boot() {
-  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; } } catch (e) { storageOK = false; }
+  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; S.stile = ui.stile || S.stile; } } catch (e) { storageOK = false; }
   applyTheme();
   const lc = lockCfg();
   if (lc) {

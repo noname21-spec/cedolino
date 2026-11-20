@@ -114,7 +114,7 @@ const DEF = () => ({
     { id: 'm2', nome: 'Pomeriggio', inizio: '15:00', fine: '20:00', pausa: 0 },
     { id: 'm3', nome: 'Giornata', inizio: '10:00', fine: '19:00', pausa: 60 },
   ],
-  tema: 'scuro', vetro: true, onboarded: false, timbro: null,
+  tema: 'scuro', vetro: true, stile: 'glitch', onboarded: false, timbro: null,
   cdc: { auto: false }, sync: { on: false, pass: '' }, notifiche: false, notificato: '',
 });
 function normalizza(s) { const d = DEF(); const o = Object.assign(d, s || {}); o.profilo = Object.assign(DEF().profilo, (s && s.profilo) || {}); ['cu', 'promemoria', 'regole', 'deleted', 'buste', 'lavori'].forEach((k) => { if (!Array.isArray(o[k])) o[k] = []; }); o.cdc = Object.assign({ auto: false }, o.cdc || {}); o.sync = Object.assign({ on: false, pass: '' }, o.sync || {}); if (s && s.lavori && s.lavori.length && s.onboarded == null) o.onboarded = true; return o; }
@@ -122,7 +122,7 @@ let S = DEF();
 let storageOK = true;
 let lockKey = null; // chiave AES quando il blocco PIN è attivo
 const lockCfg = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || 'null'); } catch (e) { return null; } };
-function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify({ tema: S.tema, vetro: S.vetro })); } catch (e) {} }
+function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify({ tema: S.tema, vetro: S.vetro, stile: S.stile })); } catch (e) {} }
 let saveT = null;
 function save(opts = {}) {
   S.updatedAt = Date.now();
@@ -163,7 +163,8 @@ async function fileDel(id) { memFiles.delete(id); const d = await db(); if (!d) 
 function applyTheme() {
   let t = S.tema; if (t === 'auto') t = matchMedia('(prefers-color-scheme: light)').matches ? 'chiaro' : 'scuro';
   document.documentElement.dataset.tema = t; document.documentElement.dataset.vetro = S.vetro ? '1' : '0';
-  const mc = $('meta[name="theme-color"]'); if (mc) mc.content = t === 'chiaro' ? '#F2F5FC' : t === 'nero' ? '#000000' : '#0A1230';
+  const gl = S.stile !== 'classico'; document.documentElement.dataset.stile = gl ? 'glitch' : 'classico';
+  const mc = $('meta[name="theme-color"]'); if (mc) mc.content = t === 'chiaro' ? (gl ? '#F4F4F6' : '#F2F5FC') : t === 'nero' ? '#000000' : (gl ? '#050507' : '#0A1230');
 }
 
 /* ============ dominio ============ */
@@ -1108,7 +1109,7 @@ function lineChart(series, labels, h = 160) {
 }
 
 /* ============ viste: elementi comuni ============ */
-const topbar = (title, sub, right = '', back = '') => `<div class="top">${back ? `<a class="iconbtn back" href="${back}" aria-label="Indietro">${ic.back}</a>` : ''}<h1>${title}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>${right}</div>`;
+const topbar = (title, sub, right = '', back = '') => `<div class="top">${back ? `<a class="iconbtn back" href="${back}" aria-label="Indietro">${ic.back}</a>` : ''}<h1 data-t="${String(title).replace(/<[^>]*>/g, '').replace(/"/g, '&quot;')}">${title}${sub ? `<span class="sub">${sub}</span>` : ''}</h1>${right}</div>`;
 const gearBtn = `<a class="iconbtn" href="#impostazioni" aria-label="Impostazioni">${ic.gear}</a>`;
 function accountBtn() {
   const m = (sbUser && sbUser.user_metadata) || {};
@@ -2103,6 +2104,9 @@ function viewImpostazioni() {
   <div class="fgrid"><label class="field"><span>Mese della 14ª</span><select class="inp" name="mese14"><option value="6" ${Number(P.mese14) === 6 ? 'selected' : ''}>Giugno</option><option value="7" ${Number(P.mese14) === 7 ? 'selected' : ''}>Luglio</option></select></label><label class="field"><span>Santo patrono (gg-mm)</span><input class="inp" name="patrono" value="${esc(P.patrono ? P.patrono.split('-').reverse().join('-') : '')}" placeholder="es. 04-10"></label></div>
   <label class="field"><span>Ricordami di caricare la busta dal giorno</span><input class="inp" inputmode="numeric" name="giornoBusta" value="${P.giornoBusta}"></label></div>
   <div class="sec-title">Aspetto</div><div class="card">
+  <div class="field" style="margin-bottom:6px"><span>Stile</span></div>
+  <div class="seg" style="margin-bottom:14px">${[['glitch', 'Glitch'], ['classico', 'Classico']].map(([v, l]) => `<button type="button" data-act="stile" data-v="${v}" class="${(S.stile === 'classico' ? 'classico' : 'glitch') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="field" style="margin-bottom:6px"><span>Tema</span></div>
   <div class="seg" style="margin-bottom:8px">${[['auto', 'Auto'], ['chiaro', 'Chiaro'], ['scuro', 'Notte blu'], ['nero', 'Nero']].map(([v, l]) => `<button type="button" data-act="tema" data-v="${v}" class="${S.tema === v ? 'on' : ''}">${l}</button>`).join('')}</div>
   <label class="check"><input type="checkbox" name="vetro" ${S.vetro ? 'checked' : ''} data-act="vetro"><span class="switch"></span><span class="grow">Effetto vetro</span></label></div>
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
@@ -2380,6 +2384,7 @@ const actions = {
   'dettaglio-stima'(el) { dettaglioStima(el.dataset.ym, el.dataset.job); },
   'calc-modo'(el) { calc.modo = el.dataset.m; render(); },
   tema(el) { S.tema = el.dataset.v; save(); applyTheme(); render(); },
+  stile(el) { S.stile = el.dataset.v; save(); applyTheme(); render(); },
   info(el) { const t = TERMS[el.dataset.k]; if (!t) return; const sh = openSheet(`<h3>${esc(t[0])}</h3><p class="lead" style="color:var(--text)">${esc(t[1])}</p><button class="btn block" data-x="ok">Ho capito</button>`); sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); }); },
   'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; save(); render(); toast(`Turno iniziato alle ${S.timbro.inizio}`); },
   'timbra-fine'() { const t = S.timbro; if (!t) return; const d = new Date(); turniJob = t.jobId; giornoSheet(t.data, { tipo: 'turno', inizio: t.inizio, fine: `${pad(d.getHours())}:${pad(d.getMinutes())}`, pausa: 0 }, () => { S.timbro = null; save(); toast('Turno salvato'); }); },
@@ -2460,7 +2465,7 @@ document.addEventListener('visibilitychange', async () => {
 
 /* ============ avvio ============ */
 async function boot() {
-  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; } } catch (e) { storageOK = false; }
+  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; S.stile = ui.stile || S.stile; } } catch (e) { storageOK = false; }
   applyTheme();
   const lc = lockCfg();
   if (lc) {
