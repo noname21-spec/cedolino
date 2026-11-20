@@ -51,7 +51,7 @@ function viewHome() {
   if (todo.length) h += `<div class="card"><h2><span class="grow">Cosa fare ora</span><a class="link" href="#promemoria">Tutti</a></h2>${todo.map(todoRow).join('')}</div>`;
   const sd = saldi(j); const tfr = tfrStimato(j);
   const ultima = S.buste.filter((b) => b.jobId === j.id).sort((a, b) => (a.ym < b.ym ? 1 : -1))[0];
-  h += `<div class="grid2">
+  h += `<div class="grid2" style="margin-bottom:14px">
     <div class="tile" data-go="#turni"><div class="row between"><div class="ic g">${ic.sun}</div>${info('ferie')}</div><div><div class="v">${sd ? num(sd.ferie, 1) : '—'} <small class="muted" style="font-size:14px">giorni</small></div><div class="l">Ferie residue${sd && sd.oreGiorno ? ` · ${num(sd.ferieOre, 1)} h` : ''}</div></div></div>
     <div class="tile" data-go="#turni"><div class="row between"><div class="ic a">${ic.clock}</div>${info('permessi')}</div><div><div class="v">${sd ? num(sd.permessi, 0) : '—'} <small class="muted" style="font-size:14px">ore</small></div><div class="l">Permessi residui</div></div></div>
     <div class="tile" data-go="#fine-${j.id}"><div class="row between"><div class="ic b">${ic.piggy}</div>${info('tfr')}</div><div><div class="v">${eur0(tfr)}</div><div class="l">TFR maturato (stima)</div></div></div>
