@@ -19,6 +19,10 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=Outfit:wght@500;600;700&family=Orbitron:wght@700;800&family=Chakra+Petch:wght@400;500;600;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script>/* iPhone, app installata: iOS 26 a volte considera la pagina più corta dello schermo e la barra resta sospesa. Misuro l'altezza vera e ci aggancio la barra. */
+(function(){try{var ios=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==="MacIntel"&&navigator.maxTouchPoints>1);var sa=ios&&(navigator.standalone===true||matchMedia("(display-mode: standalone)").matches);if(!sa)return;var r=document.documentElement;r.classList.add("sa");
+function f(){var p=innerHeight>=innerWidth,sh=p?Math.max(screen.height,screen.width):Math.min(screen.height,screen.width),h=Math.max(innerHeight,r.clientHeight||0);if(sh>h&&sh-h<90)h=sh;r.style.setProperty("--apph",h+"px")}
+f();addEventListener("resize",f);addEventListener("pageshow",f);addEventListener("hashchange",function(){f();setTimeout(f,60)});if(window.visualViewport)visualViewport.addEventListener("resize",f);addEventListener("orientationchange",function(){setTimeout(f,300)})}catch(e){}})();</script>
 </head>
 <body>
 <main id="app" class="wrap" aria-live="polite"></main>

@@ -455,3 +455,9 @@ html[data-stile="glitch"] .ob-t{font-size:22px}
 html[data-stile="glitch"] .install{background:var(--card);border-color:var(--line);box-shadow:inset 3px 0 0 var(--g2)}
 html[data-stile="glitch"] .timbro.on{box-shadow:inset 3px 0 0 var(--ok)}
 html[data-stile="glitch"] label.check:has(input[name="vetro"]){display:none}
+
+/* iPhone, app installata (html.sa): barra e finestre agganciate all'altezza vera dello schermo, non al fondo «virtuale» di iOS 26 */
+html.sa,html.sa body{height:var(--apph,100%);min-height:var(--apph,100%)}
+html.sa .nav{bottom:auto;top:calc(var(--apph,100vh) - var(--nav-h) - env(safe-area-inset-bottom))}
+html.sa .scrim,html.sa .lock,html.sa .viewer{bottom:auto;height:var(--apph,100vh)}
+html.sa .toast{bottom:auto;top:calc(var(--apph,100vh) - var(--nav-h) - env(safe-area-inset-bottom) - 70px)}
