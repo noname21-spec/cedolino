@@ -114,7 +114,7 @@ const DEF = () => ({
     { id: 'm2', nome: 'Pomeriggio', inizio: '15:00', fine: '20:00', pausa: 0 },
     { id: 'm3', nome: 'Giornata', inizio: '10:00', fine: '19:00', pausa: 60 },
   ],
-  tema: 'scuro', vetro: true, stile: 'glitch', intro: true, onboarded: false, timbro: null,
+  tema: 'nero', vetro: true, intro: true, fx: true, onboarded: false, timbro: null,
   cdc: { auto: false }, sync: { on: false, pass: '' }, notifiche: false, notificato: '',
 });
 function normalizza(s) { const d = DEF(); const o = Object.assign(d, s || {}); o.profilo = Object.assign(DEF().profilo, (s && s.profilo) || {}); ['cu', 'promemoria', 'regole', 'deleted', 'buste', 'lavori'].forEach((k) => { if (!Array.isArray(o[k])) o[k] = []; }); o.cdc = Object.assign({ auto: false }, o.cdc || {}); o.sync = Object.assign({ on: false, pass: '' }, o.sync || {}); if (s && s.lavori && s.lavori.length && s.onboarded == null) o.onboarded = true; return o; }
@@ -122,7 +122,7 @@ let S = DEF();
 let storageOK = true;
 let lockKey = null; // chiave AES quando il blocco PIN è attivo
 const lockCfg = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || 'null'); } catch (e) { return null; } };
-function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify({ tema: S.tema, vetro: S.vetro, stile: S.stile, intro: S.intro !== false })); } catch (e) {} }
+function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify({ tema: S.tema, vetro: S.vetro, intro: S.intro !== false })); } catch (e) {} }
 let saveT = null;
 function save(opts = {}) {
   S.updatedAt = Date.now();
@@ -161,8 +161,8 @@ async function fileDel(id) { memFiles.delete(id); const d = await db(); if (!d) 
 
 /* ============ tema ============ */
 function applyTheme() {
-  let t = S.tema; if (t === 'auto') t = matchMedia('(prefers-color-scheme: light)').matches ? 'chiaro' : 'scuro';
-  document.documentElement.dataset.tema = t; document.documentElement.dataset.vetro = S.vetro ? '1' : '0';
-  const gl = S.stile !== 'classico'; document.documentElement.dataset.stile = gl ? 'glitch' : 'classico';
-  const mc = $('meta[name="theme-color"]'); if (mc) mc.content = t === 'chiaro' ? (gl ? '#F4F4F6' : '#F2F5FC') : t === 'nero' ? '#000000' : (gl ? '#050507' : '#0A1230');
+  if (S.tema === 'scuro') S.tema = 'nero'; // il tema Notte blu non c'è più: diventa Nero
+  let t = S.tema; if (t === 'auto') t = matchMedia('(prefers-color-scheme: light)').matches ? 'chiaro' : 'nero';
+  const r = document.documentElement; r.dataset.tema = t; r.dataset.vetro = S.vetro ? '1' : '0'; delete r.dataset.stile;
+  const mc = $('meta[name="theme-color"]'); if (mc) mc.content = t === 'chiaro' ? '#F6F7FB' : '#000000';
 }

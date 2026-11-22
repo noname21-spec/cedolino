@@ -183,8 +183,8 @@ function bustaForm(pref = {}, found = {}, fileRec = null) {
     CAMPI_BUSTA.forEach(([k]) => { rec[k] = toNum(fd.get(k)); }); rec.ferieUnita = fd.get('ferieUnita') || null;
     if (!rec.ym) { toast('Indica il mese'); return; }
     if (fileRec) { rec.fileId = fileRec.id; rec.testo = (fileRec.testo || '').slice(0, 20000); }
-    if (!pref.id) S.buste.push(rec);
-    save(); closeSheet(); toast('Busta salvata');
+    const nuova = !pref.id; if (nuova) S.buste.push(rec);
+    save(); closeSheet(); if (!(nuova && fxScontrino(rec))) toast('Busta salvata');
     if (S.cdc.auto && rec.netto) inviaCdc(rec, true);
     location.hash = '#busta-' + rec.id; render();
   });

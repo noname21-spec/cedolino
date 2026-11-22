@@ -18,12 +18,11 @@ function viewImpostazioni() {
   <div class="fgrid"><label class="field"><span>Mese della 14ª</span><select class="inp" name="mese14"><option value="6" ${Number(P.mese14) === 6 ? 'selected' : ''}>Giugno</option><option value="7" ${Number(P.mese14) === 7 ? 'selected' : ''}>Luglio</option></select></label><label class="field"><span>Santo patrono (gg-mm)</span><input class="inp" name="patrono" value="${esc(P.patrono ? P.patrono.split('-').reverse().join('-') : '')}" placeholder="es. 04-10"></label></div>
   <label class="field"><span>Ricordami di caricare la busta dal giorno</span><input class="inp" inputmode="numeric" name="giornoBusta" value="${P.giornoBusta}"></label></div>
   <div class="sec-title">Aspetto</div><div class="card">
-  <div class="field" style="margin-bottom:6px"><span>Stile</span></div>
-  <div class="seg" style="margin-bottom:14px">${[['glitch', 'Glitch'], ['classico', 'Classico']].map(([v, l]) => `<button type="button" data-act="stile" data-v="${v}" class="${(S.stile === 'classico' ? 'classico' : 'glitch') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
   <div class="field" style="margin-bottom:6px"><span>Tema</span></div>
-  <div class="seg" style="margin-bottom:8px">${[['auto', 'Auto'], ['chiaro', 'Chiaro'], ['scuro', 'Notte blu'], ['nero', 'Nero']].map(([v, l]) => `<button type="button" data-act="tema" data-v="${v}" class="${S.tema === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+  <div class="seg" style="margin-bottom:8px">${[['auto', 'Automatico'], ['chiaro', 'Chiaro'], ['nero', 'Nero']].map(([v, l]) => `<button type="button" data-act="tema" data-v="${v}" class="${S.tema === v ? 'on' : ''}">${l}</button>`).join('')}</div>
   <label class="check"><input type="checkbox" name="vetro" ${S.vetro ? 'checked' : ''} data-act="vetro"><span class="switch"></span><span class="grow">Effetto vetro</span></label>
-  <label class="check"><input type="checkbox" name="intro" ${S.intro !== false ? 'checked' : ''} data-act="intro"><span class="switch"></span><span class="grow">Animazione di apertura</span></label></div>
+  <label class="check"><input type="checkbox" name="intro" ${S.intro !== false ? 'checked' : ''} data-act="intro"><span class="switch"></span><span class="grow">Animazione di apertura</span></label>
+  <label class="check"><input type="checkbox" name="fx" ${S.fx !== false ? 'checked' : ''} data-act="fx"><span class="switch"></span><span class="grow">Effetti divertenti<small class="muted" style="display:block;font-size:12.5px">Rotelle del netto, scontrino, timbro, monetine, cartellino</small></span></label></div>
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
   h += `<div class="sec-title">Sicurezza</div><div class="card"><div class="row"><div class="ic b icbox">${ic.lock}</div><div class="grow"><b>Blocco con PIN</b><div class="small muted">${lc ? 'Attivo: i dati su questo telefono sono cifrati.' : 'Chiede un PIN all’apertura e cifra i dati sul telefono.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${lc ? `<button class="btn ghost" data-act="pin-set">Cambia PIN</button><button class="btn danger" data-act="pin-del">Togli</button>` : `<button class="btn" data-act="pin-set">${ic.lock} Imposta un PIN</button>`}</div></div>`;
@@ -238,6 +237,7 @@ function render() {
   aggiornaBadge();
   const sec = { busta: 'buste', lavoro: 'lavori', cv: 'lavori' }[base] || base;
   navSync(sec);
+  if (base === 'home') fxHome();
   document.body.classList.toggle('no-nav', base === 'benvenuto');
   const pf = $('form[data-form="profilo"]');
   if (pf) { const sync = () => { const d = $('[data-reg]'); if (d) d.style.display = pf.regione.value === 'personalizzata' ? '' : 'none'; }; pf.regione.addEventListener('change', sync); sync(); }
@@ -337,9 +337,8 @@ const actions = {
   'calc-modo'(el) { calc.modo = el.dataset.m; render(); },
   tema(el) { S.tema = el.dataset.v; save(); applyTheme(); render(); },
   'nav-apri'() { navMin(false); },
-  stile(el) { S.stile = el.dataset.v; save(); applyTheme(); render(); },
   info(el) { const t = TERMS[el.dataset.k]; if (!t) return; const sh = openSheet(`<h3>${esc(t[0])}</h3><p class="lead" style="color:var(--text)">${esc(t[1])}</p><button class="btn block" data-x="ok">Ho capito</button>`); sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); }); },
-  'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; save(); render(); toast(`Turno iniziato alle ${S.timbro.inizio}`); },
+  'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; save(); render(); if (!fxCartellino(S.timbro.inizio)) toast(`Turno iniziato alle ${S.timbro.inizio}`); },
   'timbra-fine'() { const t = S.timbro; if (!t) return; const d = new Date(); turniJob = t.jobId; giornoSheet(t.data, { tipo: 'turno', inizio: t.inizio, fine: `${pad(d.getHours())}:${pad(d.getMinutes())}`, pausa: 0 }, () => { S.timbro = null; save(); toast('Turno salvato'); }); },
   lettera(el) { lettera(S.buste.find((x) => x.id === el.dataset.id)); },
   async 'cdc-invia'(el) { await inviaCdc(S.buste.find((x) => x.id === el.dataset.id)); render(); },
@@ -382,6 +381,7 @@ const actions = {
 const changeActions = {
   vetro(el) { S.vetro = el.checked; save(); applyTheme(); },
   intro(el) { S.intro = el.checked; save(); },
+  fx(el) { S.fx = el.checked; save(); },
   'cv-toggle'(el) { if (el.checked) cvEsclusi.delete(el.dataset.id); else cvEsclusi.add(el.dataset.id); render(); },
   'naspi-fatta'(el) { const j = job(el.dataset.id); if (j) { j.naspiFatta = el.checked; save(); } },
   'cdc-auto'(el) { S.cdc.auto = el.checked; save(); toast(el.checked ? 'Le nuove buste andranno in Conto di Casa' : 'Invio automatico disattivato'); },
@@ -419,7 +419,7 @@ document.addEventListener('visibilitychange', async () => {
 
 /* ============ avvio ============ */
 async function boot() {
-  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; S.stile = ui.stile || S.stile; if (ui.intro === false) S.intro = false; } } catch (e) { storageOK = false; }
+  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; if (ui.intro === false) S.intro = false; } } catch (e) { storageOK = false; }
   applyTheme();
   const lc = lockCfg();
   if (lc) {
@@ -447,6 +447,6 @@ async function boot() {
   setInterval(() => { if (S.timbro && ['home', 'turni'].includes(route()) && !sheetStack.length) render(); }, 60000);
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (S.tema === 'auto') applyTheme(); });
-window.__cedolino = { get S() { return S; }, stima, controlla, parseBusta, leggiFile, parseContratto, parseCU, parsePlanning, annoFiscale, naspiDati, promemoria, mergeStati };
+window.__cedolino = { get S() { return S; }, stima, controlla, parseBusta, leggiFile, parseContratto, parseCU, parsePlanning, annoFiscale, naspiDati, promemoria, mergeStati, fxScontrino, fxCartellino };
 boot();
 })();
