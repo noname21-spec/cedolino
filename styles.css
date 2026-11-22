@@ -490,3 +490,38 @@ html.sa,html.sa body{height:var(--apph,100%);min-height:var(--apph,100%)}
 html.sa .fab{bottom:auto;top:calc(var(--apph,100vh) - env(safe-area-inset-bottom) - 78px)}
 html.sa .scrim,html.sa .lock,html.sa .viewer{bottom:auto;height:var(--apph,100vh)}
 html.sa .toast{bottom:auto;top:calc(var(--apph,100vh) - env(safe-area-inset-bottom) - 140px)}
+
+/* ===== Intro «Segnale»: linea di luce, logo che si ricompone dalle strisce blu e senape, «CEDOLINO», poi la schermata si stacca ===== */
+#intro{position:fixed;inset:0;z-index:200;background:var(--bg);display:grid;place-content:center;justify-items:center;text-align:center;color:var(--text);animation:in-out .3s steps(4) 1.52s forwards;-webkit-tap-highlight-color:transparent}
+#intro.salta{animation:in-fade .16s ease-out forwards}
+.in-sl{position:absolute;left:0;right:0;top:-4px;height:2px;background:#fff;box-shadow:0 0 14px 3px rgba(255,255,255,.7),0 -7px 16px rgba(77,123,255,.75),0 7px 16px rgba(255,214,110,.75);animation:in-sl .36s ease-in forwards}
+.in-lg{position:relative;width:96px;height:96px}
+.in-lg>span{position:absolute;inset:0;border-radius:21.9%}
+.in-lg svg{display:block;width:100%;height:100%}
+.in-b{background:#4D7BFF;opacity:0;animation:in-b .42s steps(5) .36s}
+.in-y{background:#FFD66E;opacity:0;animation:in-y .42s steps(5) .36s}
+.in-m{opacity:0;animation:in-m .42s steps(4) .36s forwards}
+.in-w{position:relative;margin-top:20px;font:800 28px/1 'Orbitron','Chakra Petch',system-ui,sans-serif;letter-spacing:.12em;opacity:0;animation:in-w .3s steps(3) .78s forwards}
+.in-t{margin-top:11px;font:400 12px 'Share Tech Mono',ui-monospace,monospace;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);opacity:0;animation:in-t .26s ease-out 1s forwards}
+@keyframes in-sl{to{top:100%}}
+@keyframes in-b{0%{opacity:.9;transform:translateX(-15px);clip-path:inset(0 0 60% 0)}40%{opacity:.9;transform:translateX(8px);clip-path:inset(30% 0 30% 0)}100%{opacity:0;transform:none;clip-path:none}}
+@keyframes in-y{0%{opacity:.9;transform:translateX(15px);clip-path:inset(55% 0 0 0)}40%{opacity:.9;transform:translateX(-8px);clip-path:inset(10% 0 55% 0)}100%{opacity:0;transform:none;clip-path:none}}
+@keyframes in-m{0%{opacity:0;transform:translateX(6px)}50%{opacity:1;transform:translateX(-3px)}100%{opacity:1;transform:none}}
+@keyframes in-w{0%{opacity:0;transform:translateX(10px);text-shadow:-4px 0 #4D7BFF,4px 0 #FFD66E}40%{opacity:1;transform:translateX(-4px)}100%{opacity:1;transform:none;text-shadow:none}}
+@keyframes in-t{to{opacity:1}}
+@keyframes in-out{0%{clip-path:inset(0);transform:none;opacity:1}25%{clip-path:inset(0 0 55% 0);transform:translateX(-8px)}50%{clip-path:inset(40% 0 10% 0);transform:translateX(10px);opacity:.8}75%{clip-path:inset(70% 0 0 0);transform:translateX(-4px);opacity:.4}100%{clip-path:inset(100% 0 0 0);opacity:0;visibility:hidden}}
+@keyframes in-fade{to{opacity:0;visibility:hidden}}
+/* righe dello schermo anche sull'intro, nel Glitch */
+html[data-stile="glitch"] #intro::after{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,.035) 0 1px,transparent 1px 3px)}
+html[data-stile="glitch"][data-tema="chiaro"] #intro::after{background:repeating-linear-gradient(0deg,rgba(0,0,0,.03) 0 1px,transparent 1px 3px)}
+html[data-stile="glitch"][data-tema="chiaro"] .in-sl{background:#0A0A0D;box-shadow:0 -7px 16px rgba(47,91,234,.6),0 7px 16px rgba(225,173,33,.6)}
+/* Classico: niente strisce né righe, il logo e il nome arrivano morbidi */
+html[data-stile="classico"] .in-sl,html[data-stile="classico"] .in-b,html[data-stile="classico"] .in-y{display:none}
+html[data-stile="classico"] .in-m{animation:in-soft .5s cubic-bezier(.2,1,.3,1) .1s forwards}
+html[data-stile="classico"] .in-w{font-family:var(--ft);font-weight:700;letter-spacing:.02em;text-transform:none;animation:in-soft .45s cubic-bezier(.2,1,.3,1) .4s forwards}
+html[data-stile="classico"] .in-w{font-size:0}
+html[data-stile="classico"] .in-w::before{content:'Cedolino';font-size:30px}
+html[data-stile="classico"] .in-t{font-family:var(--fb);letter-spacing:.04em;text-transform:none;font-size:14px}
+html[data-stile="classico"] #intro{animation:in-fade .35s ease-out 1.45s forwards}
+@keyframes in-soft{0%{opacity:0;transform:translateY(10px) scale(.94)}100%{opacity:1;transform:none}}
+@media (prefers-reduced-motion:reduce){#intro{animation:in-fade .25s ease-out .7s forwards}.in-sl,.in-b,.in-y{display:none}.in-m,.in-w,.in-t{animation:none;opacity:1}}

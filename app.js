@@ -114,7 +114,7 @@ const DEF = () => ({
     { id: 'm2', nome: 'Pomeriggio', inizio: '15:00', fine: '20:00', pausa: 0 },
     { id: 'm3', nome: 'Giornata', inizio: '10:00', fine: '19:00', pausa: 60 },
   ],
-  tema: 'scuro', vetro: true, stile: 'glitch', onboarded: false, timbro: null,
+  tema: 'scuro', vetro: true, stile: 'glitch', intro: true, onboarded: false, timbro: null,
   cdc: { auto: false }, sync: { on: false, pass: '' }, notifiche: false, notificato: '',
 });
 function normalizza(s) { const d = DEF(); const o = Object.assign(d, s || {}); o.profilo = Object.assign(DEF().profilo, (s && s.profilo) || {}); ['cu', 'promemoria', 'regole', 'deleted', 'buste', 'lavori'].forEach((k) => { if (!Array.isArray(o[k])) o[k] = []; }); o.cdc = Object.assign({ auto: false }, o.cdc || {}); o.sync = Object.assign({ on: false, pass: '' }, o.sync || {}); if (s && s.lavori && s.lavori.length && s.onboarded == null) o.onboarded = true; return o; }
@@ -122,7 +122,7 @@ let S = DEF();
 let storageOK = true;
 let lockKey = null; // chiave AES quando il blocco PIN è attivo
 const lockCfg = () => { try { return JSON.parse(localStorage.getItem(LOCK_KEY) || 'null'); } catch (e) { return null; } };
-function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify({ tema: S.tema, vetro: S.vetro, stile: S.stile })); } catch (e) {} }
+function uiSave() { try { localStorage.setItem(UI_KEY, JSON.stringify({ tema: S.tema, vetro: S.vetro, stile: S.stile, intro: S.intro !== false })); } catch (e) {} }
 let saveT = null;
 function save(opts = {}) {
   S.updatedAt = Date.now();
@@ -2108,7 +2108,8 @@ function viewImpostazioni() {
   <div class="seg" style="margin-bottom:14px">${[['glitch', 'Glitch'], ['classico', 'Classico']].map(([v, l]) => `<button type="button" data-act="stile" data-v="${v}" class="${(S.stile === 'classico' ? 'classico' : 'glitch') === v ? 'on' : ''}">${l}</button>`).join('')}</div>
   <div class="field" style="margin-bottom:6px"><span>Tema</span></div>
   <div class="seg" style="margin-bottom:8px">${[['auto', 'Auto'], ['chiaro', 'Chiaro'], ['scuro', 'Notte blu'], ['nero', 'Nero']].map(([v, l]) => `<button type="button" data-act="tema" data-v="${v}" class="${S.tema === v ? 'on' : ''}">${l}</button>`).join('')}</div>
-  <label class="check"><input type="checkbox" name="vetro" ${S.vetro ? 'checked' : ''} data-act="vetro"><span class="switch"></span><span class="grow">Effetto vetro</span></label></div>
+  <label class="check"><input type="checkbox" name="vetro" ${S.vetro ? 'checked' : ''} data-act="vetro"><span class="switch"></span><span class="grow">Effetto vetro</span></label>
+  <label class="check"><input type="checkbox" name="intro" ${S.intro !== false ? 'checked' : ''} data-act="intro"><span class="switch"></span><span class="grow">Animazione di apertura</span></label></div>
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
   h += `<div class="sec-title">Sicurezza</div><div class="card"><div class="row"><div class="ic b icbox">${ic.lock}</div><div class="grow"><b>Blocco con PIN</b><div class="small muted">${lc ? 'Attivo: i dati su questo telefono sono cifrati.' : 'Chiede un PIN all’apertura e cifra i dati sul telefono.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${lc ? `<button class="btn ghost" data-act="pin-set">Cambia PIN</button><button class="btn danger" data-act="pin-del">Togli</button>` : `<button class="btn" data-act="pin-set">${ic.lock} Imposta un PIN</button>`}</div></div>`;
@@ -2466,6 +2467,7 @@ const actions = {
 };
 const changeActions = {
   vetro(el) { S.vetro = el.checked; save(); applyTheme(); },
+  intro(el) { S.intro = el.checked; save(); },
   'cv-toggle'(el) { if (el.checked) cvEsclusi.delete(el.dataset.id); else cvEsclusi.add(el.dataset.id); render(); },
   'naspi-fatta'(el) { const j = job(el.dataset.id); if (j) { j.naspiFatta = el.checked; save(); } },
   'cdc-auto'(el) { S.cdc.auto = el.checked; save(); toast(el.checked ? 'Le nuove buste andranno in Conto di Casa' : 'Invio automatico disattivato'); },
@@ -2503,7 +2505,7 @@ document.addEventListener('visibilitychange', async () => {
 
 /* ============ avvio ============ */
 async function boot() {
-  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; S.stile = ui.stile || S.stile; } } catch (e) { storageOK = false; }
+  try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; S.stile = ui.stile || S.stile; if (ui.intro === false) S.intro = false; } } catch (e) { storageOK = false; }
   applyTheme();
   const lc = lockCfg();
   if (lc) {

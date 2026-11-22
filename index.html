@@ -25,6 +25,13 @@ function f(){var p=innerHeight>=innerWidth,sh=p?Math.max(screen.height,screen.wi
 f();addEventListener("resize",f);addEventListener("pageshow",f);addEventListener("hashchange",function(){f();setTimeout(f,60)});if(window.visualViewport)visualViewport.addEventListener("resize",f);addEventListener("orientationchange",function(){setTimeout(f,300)})}catch(e){}})();</script>
 </head>
 <body>
+<div id="intro" aria-hidden="true"><i class="in-sl"></i><div class="in-lg"><span class="in-b"></span><span class="in-y"></span><span class="in-m"><svg viewBox="0 0 512 512"><rect width="512" height="512" rx="112" fill="#13205A"/><g transform="translate(-19 -4)"><path d="M130 92h160l52 52v244a20 20 0 0 1-20 20H130a20 20 0 0 1-20-20V112a20 20 0 0 1 20-20z" fill="#EEF2FF"/><path d="M290 92v36a16 16 0 0 0 16 16h36z" fill="#B9C6F0"/><rect x="144" y="170" width="120" height="16" rx="8" fill="#6E95FF"/><rect x="144" y="210" width="90" height="16" rx="8" fill="#B9C6F0"/><rect x="144" y="250" width="70" height="16" rx="8" fill="#B9C6F0"/><circle cx="318" cy="306" r="82" fill="#13205A" stroke="#F4CB63" stroke-width="26"/><path d="M280 306 L308 334 L358 282" fill="none" stroke="#4ADE80" stroke-width="24" stroke-linecap="round" stroke-linejoin="round"/><line x1="380" y1="368" x2="428" y2="416" stroke="#F4CB63" stroke-width="38" stroke-linecap="round"/></g></svg></span></div><div class="in-w">CEDOLINO</div><div class="in-t">buste · turni · lavori</div></div>
+<script>/* intro «Segnale»: solo all'apertura (non ai ricaricamenti), si salta con un tocco, si spegne in Impostazioni › Aspetto; prende subito tema e stile salvati */
+(function(){var r=document.documentElement,el=document.getElementById("intro"),ui={};try{ui=JSON.parse(localStorage.getItem("cedolino.ui")||"{}")||{}}catch(e){}
+var t=ui.tema||"scuro";if(t==="auto")t=matchMedia("(prefers-color-scheme: light)").matches?"chiaro":"scuro";r.dataset.tema=t;r.dataset.stile=ui.stile==="classico"?"classico":"glitch";if(ui.vetro===false)r.dataset.vetro="0";
+var gia=false;try{gia=sessionStorage.getItem("cedolino.intro")==="1";sessionStorage.setItem("cedolino.intro","1")}catch(e){}
+if(ui.intro===false||gia){el.remove();return}
+var via=function(){if(el.parentNode)el.remove()};el.addEventListener("click",function(){el.classList.add("salta");setTimeout(via,180)});setTimeout(via,2100)})();</script>
 <main id="app" class="wrap" aria-live="polite"></main>
 <nav class="nav" aria-label="Sezioni">
   <div class="nav-in">
