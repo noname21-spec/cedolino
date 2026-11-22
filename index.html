@@ -32,7 +32,10 @@ var t=ui.tema||"nero";if(t==="scuro")t="nero";if(t==="auto")t=matchMedia("(prefe
 var mc=document.querySelector('meta[name="theme-color"]');if(mc)mc.content=t==="chiaro"?"#F6F7FB":"#000000";
 var gia=false;try{gia=sessionStorage.getItem("cedolino.intro")==="1";sessionStorage.setItem("cedolino.intro","1")}catch(e){}
 if(ui.intro===false||gia){el.remove();return}
-var via=function(){if(el.parentNode)el.remove()};el.addEventListener("click",function(){el.classList.add("salta");setTimeout(via,180)});setTimeout(via,1900)})();</script>
+var via=function(){if(el.parentNode)el.remove()};
+/* con il PIN attivo l'intro non sparisce: il logo sale e sotto compare la richiesta di sblocco (la gestisce l'app) */
+if(localStorage.getItem("cedolino.lock")){el.classList.add("blk");setTimeout(via,12000);return}
+el.addEventListener("click",function(){el.classList.add("salta");setTimeout(via,180)});setTimeout(via,1900)})();</script>
 <main id="app" class="wrap" aria-live="polite"></main>
 <nav class="nav" aria-label="Sezioni">
   <div class="nav-in">

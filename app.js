@@ -2167,7 +2167,9 @@ function viewImpostazioni() {
   <label class="check"><input type="checkbox" name="fx" ${S.fx !== false ? 'checked' : ''} data-act="fx"><span class="switch"></span><span class="grow">Effetti divertenti<small class="muted" style="display:block;font-size:12.5px">Rotelle del netto, scontrino, timbro, monetine, cartellino</small></span></label></div>
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
   h += `<div class="sec-title">Sicurezza</div><div class="card"><div class="row"><div class="ic b icbox">${ic.lock}</div><div class="grow"><b>Blocco con PIN</b><div class="small muted">${lc ? 'Attivo: i dati su questo telefono sono cifrati.' : 'Chiede un PIN all’apertura e cifra i dati sul telefono.'}</div></div></div>
-    <div class="btns" style="margin-top:12px">${lc ? `<button class="btn ghost" data-act="pin-set">Cambia PIN</button><button class="btn danger" data-act="pin-del">Togli</button>` : `<button class="btn" data-act="pin-set">${ic.lock} Imposta un PIN</button>`}</div></div>`;
+    <div class="btns" style="margin-top:12px">${lc ? `<button class="btn ghost" data-act="pin-set">Cambia PIN</button><button class="btn danger" data-act="pin-del">Togli</button>` : `<button class="btn" data-act="pin-set">${ic.lock} Imposta un PIN</button>`}</div>
+    ${lc && bioDisp ? `<label class="check" style="margin-top:12px"><input type="checkbox" name="bio" ${lc.bio ? 'checked' : ''} data-act="bio"><span class="switch"></span><span class="grow">Sblocca con ${BIO_NOME}<small class="muted" style="display:block;font-size:12.5px">Il PIN resta per quando ${BIO_NOME} non va.</small></span></label>` : ''}
+    ${!lc && bioDisp ? `<p class="small muted" style="margin:10px 0 0">Dopo aver impostato il PIN potrai sbloccare anche con ${BIO_NOME}.</p>` : ''}</div>`;
   const nb = S.buste.filter((b) => b.netto).length, inv = S.buste.filter((b) => b.cdc).length;
   h += `<div class="sec-title">Conto di Casa</div><div class="card"><div class="row"><div class="ic a icbox">${ic.link}</div><div class="grow"><b>Stipendio come entrata</b><div class="small muted">Ogni netto finisce in Conto di Casa nel giorno in cui arriva lo stipendio. ${inv ? `${inv} buste già inviate.` : ''}</div></div></div>
     <label class="check"><input type="checkbox" data-act="cdc-auto" ${S.cdc.auto ? 'checked' : ''}><span class="switch"></span><span class="grow">Invia automaticamente ogni nuova busta</span></label>
@@ -2315,37 +2317,78 @@ async function inviaCdc(b, silenzioso) {
   return false;
 }
 
-/* ============ blocco PIN ============ */
-let lockedAt = 0;
+/* ============ blocco PIN e Face ID ============ */
+let lockedAt = 0, pinMem = null, bioDisp = false;
+const BIO_NOME = /iPhone|iPad|Mac/.test(navigator.userAgent) ? 'Face ID' : 'impronta o volto';
+const IC_BIO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 9v1.5M15 9v1.5M12 9v4h-1M9 16c1.5 1.2 4.5 1.2 6 0"/></svg>';
 function lockScreen(verifica) {
   return new Promise((resolve) => {
+    const lc = lockCfg() || {}, bio = !!(lc.bio && bioDisp !== null);
     const el = document.createElement('div'); el.className = 'lock';
-    el.innerHTML = `<div class="lock-in"><img src="icons/icon.svg?v=2" alt="" width="64" height="64"><h2>Cedolino è bloccato</h2><p class="muted" id="lkMsg">Inserisci il PIN</p><div class="pinDots" id="lkDots"></div><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((k) => (k === '' ? '<span></span>' : `<button type="button" data-k="${k}" aria-label="${k === '⌫' ? 'Cancella' : k}">${k}</button>`)).join('')}</div><button class="btn block" id="lkOk">Sblocca</button><button class="link" id="lkForgot" style="margin-top:14px">Ho dimenticato il PIN</button></div>`;
-    document.body.appendChild(el); let pin = '';
+    el.innerHTML = `<div class="lock-in"><img src="icons/icon.svg?v=2" alt="" width="64" height="64"><h2>Bentornato${S.profilo && S.profilo.nome ? ', ' + esc(S.profilo.nome) : ''}</h2><p class="muted" id="lkMsg">${bio ? `Usa ${BIO_NOME} o inserisci il PIN` : 'Inserisci il PIN'}</p><div class="pinDots" id="lkDots"></div><div class="keypad">${[1, 2, 3, 4, 5, 6, 7, 8, 9, '', 0, '⌫'].map((k) => (k === '' ? (bio ? `<button type="button" class="kbio" data-bio aria-label="Usa ${BIO_NOME}">${IC_BIO}</button>` : '<span></span>') : `<button type="button" data-k="${k}" aria-label="${k === '⌫' ? 'Cancella' : k}">${k}</button>`)).join('')}</div><button class="btn block" id="lkOk">Sblocca</button><button class="link" id="lkForgot" style="margin-top:14px">Ho dimenticato il PIN</button></div>`;
+    document.body.appendChild(el); let pin = '', occupato = false;
+    const msg = (t) => { $('#lkMsg', el).innerHTML = t; };
     const dots = () => { $('#lkDots', el).innerHTML = Array.from({ length: Math.max(4, pin.length) }, (_, i) => `<i class="${i < pin.length ? 'on' : ''}"></i>`).join(''); };
     dots();
-    const prova = async () => {
-      if (pin.length < 4) return; $('#lkMsg', el).textContent = 'Verifico…';
-      const ok = await verifica(pin);
-      if (ok) { el.remove(); resolve(true); }
-      else { pin = ''; dots(); $('#lkMsg', el).textContent = 'PIN sbagliato, riprova'; el.querySelector('.lock-in').classList.add('shake'); setTimeout(() => el.querySelector('.lock-in').classList.remove('shake'), 400); }
+    const apri = () => { el.classList.add('ok'); setTimeout(() => { el.classList.add('via'); setTimeout(() => { el.remove(); resolve(true); }, 300); }, 260); };
+    const prova = async (p = pin) => {
+      if (p.length < 4 || occupato) return; occupato = true; msg('Verifico…');
+      const ok = await verifica(p); occupato = false;
+      if (ok) { pinMem = p; pin = '9'.repeat(Math.max(4, p.length)); dots(); apri(); }
+      else { pin = ''; dots(); msg('PIN sbagliato, riprova'); el.querySelector('.lock-in').classList.add('shake'); setTimeout(() => el.querySelector('.lock-in').classList.remove('shake'), 400); }
+    };
+    const conBio = async () => {
+      if (!bio || occupato) return;
+      try { msg(`Guarda il telefono per ${BIO_NOME}…`); const p = await bioSblocca(); await prova(p); }
+      catch (e) { msg(e && e.name === 'NotAllowedError' ? `Tocca ${IC_BIO.replace('<svg', '<svg width="16" height="16" style="vertical-align:-3px"')} per usare ${BIO_NOME}, o inserisci il PIN` : `${BIO_NOME} non ha funzionato: inserisci il PIN`); }
     };
     el.addEventListener('click', async (e) => {
       const k = e.target.closest('[data-k]');
       if (k) { const v = k.dataset.k; if (v === '⌫') pin = pin.slice(0, -1); else if (pin.length < 6) pin += v; dots(); if (pin.length === 6) prova(); }
+      if (e.target.closest('[data-bio]')) conBio();
       if (e.target.closest('#lkOk')) prova();
       if (e.target.closest('#lkForgot')) {
-        $('#lkMsg', el).innerHTML = 'Senza PIN i dati cifrati su questo telefono non si possono aprire. Puoi cancellarli e, se avevi la sincronizzazione, recuperarli accedendo con Google.';
+        msg('Senza PIN i dati cifrati su questo telefono non si possono aprire. Puoi cancellarli e, se avevi la sincronizzazione, recuperarli accedendo con Google.');
         e.target.outerHTML = '<button class="btn danger block" id="lkReset" style="margin-top:12px">Cancella i dati di questo telefono</button>';
       }
       if (e.target.closest('#lkReset')) { try { localStorage.removeItem(KEY); localStorage.removeItem(LOCK_KEY); indexedDB.deleteDatabase('cedolino-files'); } catch (err) {} location.hash = '#benvenuto'; location.reload(); }
     });
     document.addEventListener('keydown', function kd(e) { if (!document.body.contains(el)) { document.removeEventListener('keydown', kd); return; } if (/^\d$/.test(e.key) && pin.length < 6) { pin += e.key; dots(); } if (e.key === 'Backspace') { pin = pin.slice(0, -1); dots(); } if (e.key === 'Enter') prova(); });
+    /* se l'intro sta girando, il logo sale al suo posto e la richiesta di sblocco compare sotto */
+    const intro = document.getElementById('intro');
+    if (intro && intro.classList.contains('blk')) {
+      el.classList.add('da-intro');
+      setTimeout(() => {
+        const lg = $('.in-logo', intro), im = $('img', el);
+        if (lg && im) { const a = lg.getBoundingClientRect(), b = im.getBoundingClientRect(); lg.style.setProperty('--to', `translate(${b.left + b.width / 2 - (a.left + a.width / 2)}px,${b.top + b.height / 2 - (a.top + a.height / 2)}px) scale(${b.width / a.width})`); }
+        intro.classList.add('su'); el.classList.add('vis');
+        setTimeout(() => { intro.remove(); el.classList.add('fine'); conBio(); }, 480);
+      }, Math.max(0, 1300 - performance.now()));
+    } else { if (intro) intro.remove(); setTimeout(conBio, 250); }
   });
 }
 async function verificaPin(pin) {
   const lc = lockCfg(); if (!lc) return true;
-  try { const key = await deriveKey(pin, unb64(lc.salt)); await decJSON(lc.check, key); lockKey = key; return true; } catch (e) { return false; }
+  try { const key = await deriveKey(pin, unb64(lc.salt)); await decJSON(lc.check, key); lockKey = key; pinMem = pin; return true; } catch (e) { return false; }
+}
+/* Face ID / impronta con i passkey: dopo il riconoscimento il telefono dà una chiave segreta (PRF) che apre il PIN custodito qui */
+const rnd = (n) => crypto.getRandomValues(new Uint8Array(n));
+async function bioDisponibile() { try { return !!(window.PublicKeyCredential && PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); } catch (e) { return false; } }
+async function bioChiave(lc) {
+  const a = await navigator.credentials.get({ publicKey: { challenge: rnd(32), allowCredentials: [{ type: 'public-key', id: unb64(lc.bio.id), transports: ['internal', 'hybrid'] }], userVerification: 'required', timeout: 60000, extensions: { prf: { eval: { first: unb64(lc.bio.salt) } } } } });
+  const r = a.getClientExtensionResults().prf; if (!r || !r.results || !r.results.first) { const e = new Error('noprf'); e.name = 'NoPrf'; throw e; }
+  return crypto.subtle.importKey('raw', new Uint8Array(r.results.first), 'AES-GCM', false, ['encrypt', 'decrypt']);
+}
+async function bioSblocca() { const lc = lockCfg(); return (await decJSON(lc.bio.pin, await bioChiave(lc))).p; }
+async function bioAttiva(pin) {
+  const salt = rnd(32);
+  const cred = await navigator.credentials.create({ publicKey: { rp: { name: 'Cedolino' }, user: { id: rnd(16), name: 'Cedolino', displayName: 'Cedolino · sblocco' }, challenge: rnd(32), pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }], authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required', residentKey: 'preferred' }, timeout: 60000, extensions: { prf: { eval: { first: salt } } } } });
+  const ext = cred.getClientExtensionResults().prf;
+  if (!ext || ext.enabled === false) { const e = new Error('noprf'); e.name = 'NoPrf'; throw e; }
+  const lc = lockCfg(); lc.bio = { id: b64(cred.rawId), salt: b64(salt) };
+  const key = ext.results && ext.results.first ? await crypto.subtle.importKey('raw', new Uint8Array(ext.results.first), 'AES-GCM', false, ['encrypt', 'decrypt']) : await bioChiave(lc);
+  lc.bio.pin = await encJSON({ p: pin }, key);
+  localStorage.setItem(LOCK_KEY, JSON.stringify(lc));
 }
 function pinForm() {
   const sh = openSheet(`<h3>${lockCfg() ? 'Nuovo PIN' : 'Imposta un PIN'}</h3><p class="lead">Da 4 a 6 cifre. Lo chiedo quando apri l'app o ci torni dopo un minuto. Se lo dimentichi, i dati su questo telefono non si possono recuperare (salvo backup o sincronizzazione).</p>
@@ -2356,7 +2399,7 @@ function pinForm() {
     e.preventDefault(); const f = e.target; if (!/^\d{4,6}$/.test(f.p1.value)) { toast('Usa da 4 a 6 cifre'); return; } if (f.p1.value !== f.p2.value) { toast('I due PIN non coincidono'); return; }
     const salt = crypto.getRandomValues(new Uint8Array(16)); const key = await deriveKey(f.p1.value, salt);
     localStorage.setItem(LOCK_KEY, JSON.stringify({ salt: b64(salt), check: await encJSON({ ok: 1 }, key) }));
-    lockKey = key; save({ noSync: true }); closeSheet(); render(); toast('PIN impostato: i dati sono cifrati');
+    const avevaBio = !!(lockCfg() || {}).bio; lockKey = key; pinMem = f.p1.value; save({ noSync: true }); closeSheet(); render(); toast(avevaBio ? `PIN cambiato: riattiva ${BIO_NOME} in Sicurezza` : 'PIN impostato: i dati sono cifrati');
   });
 }
 
@@ -2503,6 +2546,7 @@ const actions = {
   'ob-fine'(el) { S.onboarded = true; save(); const g = el.dataset.go2; obStep = 0; if (g.startsWith('#')) location.hash = g; else { location.hash = '#home'; setTimeout(() => actions[g](), 120); } },
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },
+
   async 'pin-del'() { if (!(await ask('Togliere il PIN?', 'I dati su questo telefono non saranno più cifrati.', 'Togli PIN'))) return; localStorage.removeItem(LOCK_KEY); lockKey = null; save({ noSync: true }); render(); toast('PIN rimosso'); },
   'sync-on'() { offriSync(); }, 'sync-login'() { loginGoogle(); }, 'login-google'() { loginGoogle(); }, account() { accountSheet(); }, 'sync-now'() { syncNow(); },
   async 'sync-logout'() { if (!(await ask('Uscire dall\u2019account?', 'I dati restano su questo telefono, ma smettono di sincronizzarsi.', 'Esci'))) return; try { await sb.auth.signOut(); } catch (e) {} sbUser = null; S.sync = { on: false, pass: '' }; save({ noSync: true }); closeSheet(); render(); toast('Sei uscito: i dati restano su questo telefono'); },
@@ -2524,6 +2568,13 @@ const changeActions = {
   vetro(el) { S.vetro = el.checked; save(); applyTheme(); },
   intro(el) { S.intro = el.checked; save(); },
   fx(el) { S.fx = el.checked; save(); },
+  async bio(el) {
+    const lc = lockCfg(); if (!lc) return;
+    if (!el.checked) { delete lc.bio; localStorage.setItem(LOCK_KEY, JSON.stringify(lc)); toast(`${BIO_NOME} spento: si sblocca solo col PIN`); return; }
+    if (!pinMem) { el.checked = false; toast('Blocca e riapri l’app col PIN, poi riprova'); return; }
+    try { await bioAttiva(pinMem); toast(`${BIO_NOME} attivo: la prossima volta basta guardare il telefono`); }
+    catch (e) { el.checked = false; toast(e.name === 'NoPrf' ? `Su questo telefono ${BIO_NOME} non può aprire i dati cifrati: serve iOS 18 o più recente` : `${BIO_NOME} non attivato`); }
+  },
   'cv-toggle'(el) { if (el.checked) cvEsclusi.delete(el.dataset.id); else cvEsclusi.add(el.dataset.id); render(); },
   'naspi-fatta'(el) { const j = job(el.dataset.id); if (j) { j.naspiFatta = el.checked; save(); } },
   'cdc-auto'(el) { S.cdc.auto = el.checked; save(); toast(el.checked ? 'Le nuove buste andranno in Conto di Casa' : 'Invio automatico disattivato'); },
@@ -2564,6 +2615,7 @@ async function boot() {
   try { const ui = JSON.parse(localStorage.getItem(UI_KEY) || 'null'); if (ui) { S.tema = ui.tema || S.tema; S.vetro = ui.vetro !== false; if (ui.intro === false) S.intro = false; } } catch (e) { storageOK = false; }
   applyTheme();
   const lc = lockCfg();
+  bioDisp = await Promise.race([bioDisponibile(), new Promise((ok) => setTimeout(() => ok(false), 400))]);
   if (lc) {
     await lockScreen(async (pin) => {
       if (!(await verificaPin(pin))) return false;
