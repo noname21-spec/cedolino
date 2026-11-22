@@ -18,7 +18,7 @@ function cardTimbro() {
     const start = new Date(S.timbro.data + 'T00:00:00'); start.setHours(h, m); const min = Math.max(0, Math.round((Date.now() - start) / 60000));
     return `<div class="card timbro on"><div class="row"><span class="pulse"></span><div class="grow"><b>In turno da ${S.timbro.inizio}</b><div class="small muted">${esc(j.azienda)} · ${Math.floor(min / 60)} h ${min % 60} min</div></div><button class="btn sm" data-act="timbra-fine">${ic.stop} Fine turno</button></div></div>`;
   }
-  return `<div class="card timbro"><div class="row"><div class="ic b" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center">${ic.clock}</div><div class="grow"><b>Stai iniziando il turno?</b><div class="small muted">Un tocco ora e uno alla fine: le ore si segnano da sole.</div></div><button class="btn sm" data-act="timbra-inizio">${ic.play} Inizio</button></div></div>`;
+  return `<div class="card timbro"><div class="row"><div class="ic b" style="width:38px;height:38px;border-radius:12px;display:grid;place-items:center">${ic.clock}</div><div class="grow"><b>Stai iniziando il turno?</b><div class="small muted">Un tocco ora e uno alla fine: le ore si segnano da sole. <button class="link" data-act="comandi" style="font-size:inherit">Anche da Siri o NFC</button></div></div><button class="btn sm" data-act="timbra-inizio">${ic.play} Inizio</button></div></div>`;
 }
 
 function viewHome() {
@@ -76,6 +76,8 @@ function strumenti() {
     ${tool('#statistiche', ic.chart, 'b', 'Statistiche', 'Ore, paga oraria')}
     ${tool('#promemoria', ic.bell, 'a', 'Promemoria', 'Scadenze e avvisi')}
     ${tool('#cv', ic.user, 'g', 'Per il CV', 'Le tue esperienze')}
+    ${tool('#sefosse', ic.calc, 'b', 'E se…', 'Più ore, livello, domeniche')}
+    <button type="button" class="tool" data-act="dossier"><span class="ic r">${ic.doc}</span><b>Dossier reddito</b><small>Un PDF per affitto o CAF</small></button>
   </div><a class="tool wide" href="#guida"><span class="ic b">${ic.book}</span><b>Come leggere la busta paga</b><small>Tutte le voci spiegate semplici</small></a>`;
 }
 function todoRow(t) {
@@ -132,6 +134,7 @@ function viewBusta(id) {
   const chk = controlla(b); const problemi = chk.filter((c) => c.lettera);
   h += `<div class="card"><h2>Controllo</h2>${chk.map((c) => `<div class="chk ${c.s}"><div class="dot">${c.s === 'ok' ? ic.check : c.s === 'warn' ? ic.alert : ic.info}</div><div><b>${esc(c.t)}</b><p>${esc(c.p)}</p></div></div>`).join('')}
     <button class="btn ${problemi.length ? '' : 'ghost'} block" style="margin-top:12px" data-act="lettera" data-id="${b.id}">${ic.mail} ${problemi.length ? 'Chiedi chiarimenti all’ufficio paghe' : 'Scrivi all’ufficio paghe'}</button></div>`;
+  h += cardConfronto(b);
   const rows = [['Totale competenze (lordo)', b.lordo], ['Imponibile previdenziale', b.imponibilePrev], ['Contributi INPS', b.contributi], ['Imponibile fiscale', b.imponibileFisc], ['IRPEF trattenuta', b.irpef], ['Addizionale regionale', b.addReg], ['Addizionale comunale', b.addCom], ['Trattamento integrativo', b.ti], ['Recupero trattamento integrativo', b.tiRecupero != null ? -b.tiRecupero : null], ['Somma esente (cuneo)', b.sommaEsente], ['Totale trattenute', b.trattenute], ['Quota TFR del mese', b.tfr]].filter((r) => r[1] != null);
   const uF = unitaFerie(b, j), ogF = j && j.tipo !== 'chiamata' ? oreGiornoFerie(j, b.ym) : 0;
   const ferieTxt = (v) => (v == null ? null : uF === 'ore' ? `${num(v, 2)} h${ogF ? ` (≈ ${num(v / ogF, 1)} gg)` : ''}` : `${num(v, 2)} gg${ogF ? ` (≈ ${num(v * ogF, 1)} h)` : ''}`);
@@ -144,7 +147,7 @@ function viewBusta(id) {
   return h;
 }
 
-const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ti', 'Trattamento integrativo', '€'], ['tiRecupero', 'Recupero tratt. integrativo', '€'], ['sommaEsente', 'Somma esente (cuneo)', '€'], ['ferieRes', 'Ferie residue', 'saldo'], ['ferieMat', 'Ferie maturate nel mese', 'es. 8,67'], ['rolRes', 'ROL residui', 'ore'], ['rolMat', 'ROL maturati nel mese', 'ore'], ['exFestRes', 'Ex festività residue', 'ore'], ['exFestMat', 'Ex festività maturate nel mese', 'ore'], ['permessiRes', 'Altri permessi residui', 'ore'], ['permessiMat', 'Altri permessi maturati nel mese', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore']];
+const CAMPI_BUSTA = [['netto', 'Netto', '€'], ['lordo', 'Lordo (competenze)', '€'], ['contributi', 'Contributi (INPS/FPLS)', '€'], ['irpef', 'IRPEF trattenuta', '€'], ['trattenute', 'Totale trattenute', '€'], ['imponibilePrev', 'Imponibile contributivo', '€'], ['imponibileFisc', 'Imponibile fiscale', '€'], ['tfr', 'Quota TFR', '€'], ['addReg', 'Addiz. regionale', '€'], ['addCom', 'Addiz. comunale', '€'], ['ti', 'Trattamento integrativo', '€'], ['tiRecupero', 'Recupero tratt. integrativo', '€'], ['sommaEsente', 'Somma esente (cuneo)', '€'], ['ferieRes', 'Ferie residue', 'saldo'], ['ferieMat', 'Ferie maturate nel mese', 'es. 8,67'], ['rolRes', 'ROL residui', 'ore'], ['rolMat', 'ROL maturati nel mese', 'ore'], ['exFestRes', 'Ex festività residue', 'ore'], ['exFestMat', 'Ex festività maturate nel mese', 'ore'], ['permessiRes', 'Altri permessi residui', 'ore'], ['permessiMat', 'Altri permessi maturati nel mese', 'ore'], ['oreExtra', 'Ore extra (suppl./straord.)', 'ore'], ['oreDom', 'Ore di domenica pagate', 'ore'], ['oreFest', 'Ore festive pagate', 'ore'], ['oreNott', 'Ore notturne pagate', 'ore']];
 function bustaForm(pref = {}, found = {}, fileRec = null) {
   const b = Object.assign({ tipo: 'mensile', ym: addYM(curYM(), -1), jobId: (attivo() || {}).id }, pref);
   const testo = fileRec ? fileRec.testo : (pref.testo || '');
@@ -443,6 +446,7 @@ function viewTurni() {
   let h = topbar('Turni', esc(j.azienda), `<button class="iconbtn" data-act="modelli" aria-label="Modelli di turno">${ic.clock}</button>`);
   if (S.lavori.length > 1) h += `<div class="chips">${S.lavori.map((x) => `<button class="chip ${x.id === j.id ? 'on' : ''}" data-act="turni-job" data-id="${x.id}">${esc(x.azienda)}</button>`).join('')}</div>`;
   h += cardTimbro();
+  h += bannerFerie(j);
   h += `<div class="card"><div class="row between" style="margin-bottom:12px"><button class="iconbtn" data-act="turni-mese" data-d="-1" aria-label="Mese precedente">${ic.back}</button><h2 style="margin:0">${cap(MESI[m - 1])} ${y}</h2><button class="iconbtn" data-act="turni-mese" data-d="1" aria-label="Mese successivo" style="transform:scaleX(-1)">${ic.back}</button></div><div class="cal">`;
   ['L', 'M', 'M', 'G', 'V', 'S', 'D'].forEach((d) => (h += `<div class="h">${d}</div>`));
   const off = (new Date(y, m - 1, 1).getDay() + 6) % 7; const dim = new Date(y, m, 0).getDate(); const start = new Date(y, m - 1, 1 - off); const oggi = todayISO();
@@ -468,7 +472,7 @@ function viewTurni() {
   if (sd) { const m = sd.mensili; const pt = sd.annui;
     h += `<div class="card"><h2>Ferie e permessi</h2><div class="kv"><span class="k">Ferie residue oggi ${info('ferie')}</span><span class="v">${fmtFerie(sd.ferie, sd.oreGiorno)}</span></div><div class="kv"><span class="k">Permessi residui oggi ${info('permessi')}</span><span class="v">${num(sd.permessi, 1)} h</span></div>${sd.rolBusta != null || sd.exFestBusta != null ? `<p class="small muted" style="margin:4px 0 8px">Nell'ultima busta (${meseDi(sd.da)}): ${[sd.rolBusta != null ? `ROL ${num(sd.rolBusta, 2)} h` : '', sd.exFestBusta != null ? `ex festività ${num(sd.exFestBusta, 2)} h` : ''].filter(Boolean).join(' · ')}</p>` : ''}
       <div class="kv"><span class="k">Ogni mese maturi</span><span class="v">${num(m.ferieOre, 2)} h di ferie · ${num(m.rol + m.exFest, 2)} h di permessi</span></div><div class="kv"><span class="k">In un anno</span><span class="v">${pt.ferieGiorni} gg (${num(pt.ferieGiorni * sd.oreGiorno, 1)} h) · ROL ${num(pt.rolOre, 1)} h · ex fest. ${num(pt.exFestOre, 1)} h</span></div>
-      <p class="note">Una giornata di ferie vale ${num(sd.oreGiorno, 2)} h (il tuo orario settimanale diviso 6, perché le ferie si contano su 6 giorni).${pt.rolOre === 0 ? ' Nei primi 2 anni maturano solo le ex festività; i ROL arrivano dal 3° anno (metà) e sono interi dal 5°.' : ''}</p></div>`; }
+      <p class="note">Una giornata di ferie vale ${num(sd.oreGiorno, 2)} h (il tuo orario settimanale diviso 6, perché le ferie si contano su 6 giorni).${pt.rolOre === 0 ? ' Nei primi 2 anni maturano solo le ex festività; i ROL arrivano dal 3° anno (metà) e sono interi dal 5°.' : ''}</p>${cardPianificaFerie(j)}</div>`; }
   return h;
 }
 function giornoSheet(k, pre = null, onDone = null) {

@@ -182,6 +182,13 @@ function controlla(b) {
     if (Math.abs(att - b.oreExtra) > 0.5) out.push({ s: 'warn', t: 'Ore extra diverse dai tuoi turni', p: `Dai turni di ${meseDi(st.vym)} risultano ${num(att)} h tra supplementari e straordinari, in busta ${num(b.oreExtra)} h. Possono essere pagate nel mese dopo o finite in banca ore: verifica.`, lettera: `Dai miei turni di ${meseDi(st.vym)} risultano ${num(att)} ore oltre l'orario contrattuale, mentre in busta ne trovo ${num(b.oreExtra)}: potreste verificare?` });
     else out.push({ s: 'ok', t: 'Ore extra pagate', p: `${num(att)} h registrate, ${num(b.oreExtra)} h in busta.` });
   }
+  if (st && st.cl) {
+    [['oreDom', 'domenicali', 'di domenica'], ['oreFest', 'festive', 'festive'], ['oreNott', 'notturne', 'notturne']].forEach(([campo, k, nome]) => {
+      if (b[campo] == null) return; const att = st.cl[k];
+      if (Math.abs(att - b[campo]) > 0.5) out.push({ s: 'warn', t: `Ore ${nome} diverse dai tuoi turni`, p: `Dai turni di ${meseDi(st.vym)} risultano ${num(att)} h ${nome}, in busta ne sono pagate ${num(b[campo])}.`, lettera: `Dai miei turni di ${meseDi(st.vym)} risultano ${num(att)} ore ${nome}, mentre in busta ne trovo ${num(b[campo])}.` });
+      else out.push({ s: 'ok', t: `Ore ${nome} pagate`, p: `${num(att)} h nei turni, ${num(b[campo])} h in busta.` });
+    });
+  }
   if (b.testo && st) {
     const T = b.testo; const R = st.Rannuo; const red25 = toNum(P.reddito2025);
     if (R <= 20000 && !/esent|cuneo|207\/?2024|non\s*imp|l\.?\s*207|art\.?\s*1\s*c\.?\s*4/i.test(T)) out.push({ s: 'info', t: 'Somma esente (taglio cuneo) non trovata', p: `Con un reddito previsto sotto i 20.000 € spetta una somma esente del ${R <= 8500 ? '7,1' : R <= 15000 ? '5,3' : '4,8'}% del reddito. Nella busta non trovo la voce: a volte ha un nome diverso.`, lettera: 'Non trovo in busta la somma esente prevista dal taglio del cuneo fiscale (L. 207/2024): mi viene riconosciuta?' });

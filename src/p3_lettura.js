@@ -233,6 +233,9 @@ function parseBusta(text) {
     addCom: [/add(?:izionale|\.|\s)*\s*com/i, /imponib|progress/i],
     tfr: [/quota\s*t\.?f\.?r|t\.?f\.?r\.?\s*(?:mese|quota|maturat|del\s*mese|mensile)/i, /fondo|progress|anticip/i],
     oreExtra: [/supplementar|straordinar/i, /magg\.?\s*%?\s*$/i],
+    oreDom: [/domenic/i, /progress|riposo\s*compens/i],
+    oreFest: [/(?:lavoro|ore|magg\w*\.?)\s*festiv|\bfestiv[oi]\s*(?:lavorat|ore)/i, /ex\s*fest|festivit|soppress|godut|residu|maturat|progress/i],
+    oreNott: [/nottur/i, /progress/i],
     tiRecupero: [/(?:recuper\w*|restitu\w*|rest\.)\s*(?:del\s*)?(?:tratt\w*\.?\s*)?integrativ|(?:recuper\w*|restitu\w*)\s*(?:t\.?\s?i\.?\s?r\b|bonus|l\.?\s*21)/i, /progress/i],
     ti: [/tratt\w*\.?\s*integrativ|\bt\.?\s?i\.?\s?r\.?\b|ex\s*bonus\s*(?:renzi|100)|\bl\.?\s*21\s*\/\s*2020|d\.?\s*l\.?\s*3\s*\/\s*2020/i, /progress|recuper|restitu|rest\./i],
     sommaEsente: [/somma\s*(?:non\s*imponibile|esente)|esenzione\s*cuneo|cuneo\s*fiscale|l\.?\s*207\s*\/\s*2024|art\.?\s*1\s*c(?:omma|\.)?\s*4\b/i, /progress/i],
@@ -254,7 +257,8 @@ function parseBusta(text) {
           const scelto = inCol ? valImp(inCol.s) : c.destra[c.destra.length - 1].v;
           if (k === 'contributi' && !/tot/i.test(lab.r.str) && !righeContr.has(lab.r)) { righeContr.set(lab.r, scelto); }
           vals.push(scelto, ...c.lista);
-        } else if (k === 'oreExtra') {
+        } else if (['oreExtra', 'oreDom', 'oreFest', 'oreNott'].includes(k)) {
+          if (k !== 'oreExtra') { const inCol = colOre && colOre.p === lab.r.p && nellaColonna(lab.r, colOre); if (inCol) vals.push(valImp(inCol.s)); continue; }
           const inCol = colOre && colOre.p === lab.r.p && nellaColonna(lab.r, colOre);
           if (inCol) vals.push(valImp(inCol.s)); else vals.push(...c.lista);
         } else vals.push(...c.lista);
@@ -272,6 +276,7 @@ function parseBusta(text) {
     sp.sort((a, b) => a[0] - b[0] || b[1] - a[1]); const out = []; let end = -1; sp.forEach((s) => { if (s[0] >= end) { out.push(s[0]); end = s[1]; } }); return out; };
   for (const [k, [re, not]] of Object.entries(RE)) {
     if (found[k] != null) continue;
+    if (['oreDom', 'oreFest', 'oreNott'].includes(k)) continue;
     const vals = C[k] ? [...C[k]] : []; const somma = [];
     for (let i = 0; i < L.length; i++) {
       const line = L[i]; const m = line.match(re); if (!m || (not && not.test(line.slice(Math.max(0, m.index - 7), m.index + m[0].length)))) continue;
@@ -306,6 +311,7 @@ function parseBusta(text) {
   pick('addReg', (v) => v >= 0 && v < 400); pick('addCom', (v) => v >= 0 && v < 300);
   pick('tfr', (v) => v > 0 && (!found.lordo || v < found.lordo * 0.2));
   pick('oreExtra', (v) => v > 0 && v <= 120);
+  ['oreDom', 'oreFest', 'oreNott'].forEach((k) => pick(k, (v) => v > 0 && v <= 200));
   pick('tiRecupero', (v) => Math.abs(v) > 0 && Math.abs(v) <= 1300);
   pick('ti', (v) => v >= 0 && v <= 1300 && (!found.lordo || v < found.lordo * 0.9) && Math.abs(v) !== Math.abs(found.tiRecupero ?? -1));
   pick('sommaEsente', (v) => v > 0 && v <= 1500 && (!found.lordo || v < found.lordo * 0.2));

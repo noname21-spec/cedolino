@@ -114,7 +114,7 @@ const DEF = () => ({
     { id: 'm2', nome: 'Pomeriggio', inizio: '15:00', fine: '20:00', pausa: 0 },
     { id: 'm3', nome: 'Giornata', inizio: '10:00', fine: '19:00', pausa: 60 },
   ],
-  tema: 'nero', vetro: true, intro: true, fx: true, onboarded: false, timbro: null,
+  tema: 'nero', vetro: true, intro: true, fx: true, avvisi: { on: false }, cal: { on: false }, traguardi: {}, onboarded: false, timbro: null,
   cdc: { auto: false }, sync: { on: false, pass: '' }, notifiche: false, notificato: '',
 });
 function normalizza(s) { const d = DEF(); const o = Object.assign(d, s || {}); o.profilo = Object.assign(DEF().profilo, (s && s.profilo) || {}); ['cu', 'promemoria', 'regole', 'deleted', 'buste', 'lavori'].forEach((k) => { if (!Array.isArray(o[k])) o[k] = []; }); o.cdc = Object.assign({ auto: false }, o.cdc || {}); o.sync = Object.assign({ on: false, pass: '' }, o.sync || {}); if (s && s.lavori && s.lavori.length && s.onboarded == null) o.onboarded = true; return o; }
@@ -133,6 +133,7 @@ function save(opts = {}) {
     storageOK = true;
   } catch (e) { storageOK = false; }
   if (!opts.noSync && S.sync.on) { clearTimeout(saveT); saveT = setTimeout(() => syncNow(true), 2500); }
+  try { dopoSalvataggio(); } catch (e) {}
 }
 const segnaEliminato = (id) => { if (id && !S.deleted.includes(id)) S.deleted.push(id); if (S.deleted.length > 3000) S.deleted = S.deleted.slice(-3000); };
 

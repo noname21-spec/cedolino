@@ -1,5 +1,5 @@
 /* Cedolino service worker: offline, aggiornamenti, condivisione di file */
-const VERSION = 'cedolino-v21';
+const VERSION = 'cedolino-v22';
 const CORE = ['./', './index.html', './styles.css', './engine.js', './app.js', './manifest.webmanifest', './icons/icon.svg?v=2', './icons/icon-192.png?v=2', './icons/icon-512.png?v=2', './icons/maskable-512.png?v=2', './icons/apple-touch-180.png?v=2'];
 const CDN = ['https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js', 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'];
 const LIBS = 'cedolino-libs-v1', SHARE = 'cedolino-share';
@@ -45,4 +45,18 @@ self.addEventListener('fetch', (e) => {
   // file dell'app: rete prima (aggiornamenti subito), cache se sei offline
   e.respondWith(fetch(req).then((res) => { if (res.ok) { const cp = res.clone(); caches.open(VERSION).then((c) => c.put(req, cp)); } return res; })
     .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || (req.mode === 'navigate' ? caches.match('./index.html') : undefined))));
+});
+
+/* avvisi (notifiche) programmati da Cedolino */
+self.addEventListener('push', (e) => {
+  let d = {}; try { d = e.data ? e.data.json() : {}; } catch (err) { d = { title: 'Cedolino', body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'Cedolino', { body: d.body || '', icon: './icons/icon-192.png?v=2', badge: './icons/icon-192.png?v=2', tag: d.tag || 'cedolino', data: { url: d.url || './#home' } }));
+});
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close(); const url = new URL((e.notification.data && e.notification.data.url) || './#home', self.registration.scope).href;
+  e.waitUntil((async () => {
+    const tutti = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of tutti) { if (c.url.startsWith(self.registration.scope)) { await c.focus(); try { await c.navigate(url); } catch (err) { c.postMessage({ vai: url }); } return; } }
+    await self.clients.openWindow(url);
+  })());
 });

@@ -448,3 +448,35 @@ html:not([data-tema="chiaro"]) .fx-clock{background:#1D2232}
 .lock.via{animation:lk-via .3s ease-in forwards}
 @keyframes lk-via{to{opacity:0;transform:scale(1.04)}}
 @media (prefers-reduced-motion:reduce){.lock.da-intro .lock-in>*{transform:none}#intro.su .in-logo{transition:none}}
+
+/* ===== Novità: comandi rapidi, confronto busta-turni, ferie, simulatore, traguardi ===== */
+.cmd{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.cmd:first-of-type{border-top:0}
+.cmd>div{flex:1;min-width:0}.cmd b{display:block;font-size:15px}.cmd small{display:block;color:var(--muted);font-size:12.5px;margin-top:2px}
+.cmp{display:grid;grid-template-columns:1fr auto auto auto;gap:8px 12px;align-items:baseline;font-size:14px}
+.cmp .h{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+.cmp span:nth-child(4n+2),.cmp span:nth-child(4n+3),.cmp span:nth-child(4n){text-align:right;white-space:nowrap}
+.cmp .pos{color:var(--ok);font-weight:700}.cmp .neg{color:var(--bad);font-weight:700}
+.banner.ferie{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:14px;border-radius:var(--radius);background:var(--ok-soft);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);color:var(--text)}
+.banner.ferie>svg{width:22px;height:22px;color:var(--ok);flex:none}
+.banner.ferie .grow{flex:1}.banner.ferie .small{color:var(--muted)}
+.field.sim>span{display:flex;justify-content:space-between;align-items:baseline}
+.field.sim b{font-family:var(--ft);font-size:17px;color:var(--text)}
+.field.sim input[type=range]{width:100%;accent-color:var(--accent);height:28px}
+.tools .tool{text-align:left;font:inherit;color:inherit;cursor:pointer}
+.tg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.tg{border:1px solid var(--line);border-radius:12px;padding:10px 8px;text-align:center;background:var(--soft);opacity:.75}
+.tg.on{opacity:1;background:var(--card-solid);border-color:color-mix(in srgb,var(--accent) 45%,var(--line))}
+.tg .em{display:block;font-size:24px;line-height:1.2;filter:grayscale(1)}
+.tg.on .em{filter:none}
+.tg b{display:block;font-size:12.5px;margin-top:4px;line-height:1.2}.tg small{display:block;font-size:11px;color:var(--muted);margin-top:3px;line-height:1.25}
+@media (max-width:360px){.tg-grid{grid-template-columns:repeat(2,1fr)}}
+/* festa per un traguardo */
+.fx-medal{width:104px;height:104px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle at 35% 30%,#FFF1BF,#F2BE3D 55%,#C8900F);box-shadow:inset 0 0 0 5px rgba(255,255,255,.45),0 16px 34px rgba(0,0,0,.3);animation:fx-medal .55s cubic-bezier(.3,1.6,.5,1) both}
+.fx-medal span{font-size:50px;line-height:1}
+@keyframes fx-medal{from{transform:scale(0) rotate(-40deg)}}
+.fx-tt{margin-top:16px;font:700 26px var(--ft);color:var(--text);animation:fx-up .3s cubic-bezier(.3,1.4,.5,1) .3s both}
+.fx-tg .fx-cap{animation-delay:.45s}
+.fx-conf{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.fx-conf i{position:absolute;top:-20px;left:var(--x);width:9px;height:14px;border-radius:2px;background:var(--c);rotate:var(--r);animation:fx-conf 1.9s cubic-bezier(.3,.6,.5,1) both;animation-delay:calc(.15s + var(--d))}
+@keyframes fx-conf{0%{transform:translateY(0) rotate(0)}100%{transform:translateY(105vh) rotate(540deg)}}

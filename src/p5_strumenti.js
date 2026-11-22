@@ -257,13 +257,14 @@ function viewStatistiche() {
     const oreRif = P.variabiliMeseSucc ? null : ore;
     return { ym, ore, extra, netto, lordo, oreRif };
   });
-  if (!S.buste.length && !dati.some((d) => d.ore)) return h + vuoto(ic.chart, 'Ancora pochi dati', 'Carica qualche busta e segna i turni: qui vedrai come cambiano ore, guadagni e paga oraria mese per mese.');
+  if (!S.buste.length && !dati.some((d) => d.ore)) return h + vuoto(ic.chart, 'Ancora pochi dati', 'Carica qualche busta e segna i turni: qui vedrai come cambiano ore, guadagni e paga oraria mese per mese.') + cardTraguardi();
   const lab = dati.map((d) => MESI_B[Number(d.ym.slice(5)) - 1]);
   if (dati.some((d) => d.ore)) h += `<div class="card"><h2><span class="grow">Ore lavorate</span><span class="badge a">extra ${num(dati.reduce((a, d) => a + d.extra, 0))} h</span></h2>${barChart(dati.map((d, i) => ({ l: lab[i], t: ymLabel(d.ym), v: d.ore, c: d.extra ? 'var(--accent)' : 'var(--blue)' })), 150, (v) => num(v, 0))}<p class="note">In giallo i mesi con ore supplementari o straordinarie.</p></div>`;
   if (dati.some((d) => d.netto)) h += `<div class="card"><h2>Lordo e netto</h2>${lineChart([{ n: 'Lordo', c: 'var(--blue)', v: dati.map((d) => d.lordo || null) }, { n: 'Netto', c: 'var(--ok)', v: dati.map((d) => d.netto || null) }], lab)}<div class="leg2"><span><i style="background:var(--blue)"></i>Lordo</span><span><i style="background:var(--ok)"></i>Netto</span></div></div>`;
   const ph = dati.map((d, i) => { const oreMese = P.variabiliMeseSucc ? (dati[i - 1] ? dati[i - 1].ore : 0) : d.ore; return d.netto && oreMese ? d.netto / oreMese : null; });
   if (ph.some((x) => x)) h += `<div class="card"><h2>Paga oraria netta</h2>${lineChart([{ n: '€/ora', c: 'var(--accent)', v: ph }], lab)}<p class="note">Netto della busta diviso le ore lavorate nel mese a cui si riferisce.</p></div>`;
   if (S.lavori.length) h += `<div class="card"><h2>I tuoi lavori a confronto</h2><div class="tablewrap"><table class="tbl"><thead><tr><th>Lavoro</th><th>€/ora lordi</th><th>Netto medio</th><th>Durata</th></tr></thead><tbody>${S.lavori.map((j) => { const c = E.contratto(jCalc(j), (j.fine && j.fine < todayISO() ? j.fine : todayISO()).slice(0, 7)); const bs = S.buste.filter((b) => b.jobId === j.id && b.tipo === 'mensile' && b.netto); return `<tr><td><span class="dotc" style="background:${j.colore}"></span>${esc(j.azienda)}</td><td>${eur(c.pagaOraria)}</td><td>${bs.length ? eur0(bs.reduce((a, b) => a + b.netto, 0) / bs.length) : '—'}</td><td>${durataTxt(jobMesi(j))}</td></tr>`; }).join('')}</tbody></table></div></div>`;
+  h += cardTraguardi();
   return h;
 }
 

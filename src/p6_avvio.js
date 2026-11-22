@@ -24,6 +24,7 @@ function viewImpostazioni() {
   <label class="check"><input type="checkbox" name="intro" ${S.intro !== false ? 'checked' : ''} data-act="intro"><span class="switch"></span><span class="grow">Animazione di apertura</span></label>
   <label class="check"><input type="checkbox" name="fx" ${S.fx !== false ? 'checked' : ''} data-act="fx"><span class="switch"></span><span class="grow">Effetti divertenti<small class="muted" style="display:block;font-size:12.5px">Rotelle del netto, scontrino, timbro, monetine, cartellino</small></span></label></div>
   <button class="btn block" type="submit">Salva impostazioni</button></form>`;
+  h += cardComodita();
   h += `<div class="sec-title">Sicurezza</div><div class="card"><div class="row"><div class="ic b icbox">${ic.lock}</div><div class="grow"><b>Blocco con PIN</b><div class="small muted">${lc ? 'Attivo: i dati su questo telefono sono cifrati.' : 'Chiede un PIN all’apertura e cifra i dati sul telefono.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${lc ? `<button class="btn ghost" data-act="pin-set">Cambia PIN</button><button class="btn danger" data-act="pin-del">Togli</button>` : `<button class="btn" data-act="pin-set">${ic.lock} Imposta un PIN</button>`}</div>
     ${lc && bioDisp ? `<label class="check" style="margin-top:12px"><input type="checkbox" name="bio" ${lc.bio ? 'checked' : ''} data-act="bio"><span class="switch"></span><span class="grow">Sblocca con ${BIO_NOME}<small class="muted" style="display:block;font-size:12.5px">Il PIN resta per quando ${BIO_NOME} non va.</small></span></label>` : ''}
@@ -266,10 +267,10 @@ function route() { return (location.hash || '#home').slice(1); }
 function render() {
   const r = route(); let html;
   const [base, arg] = [r.replace(/-.*$/, ''), r.includes('-') ? r.slice(r.indexOf('-') + 1) : null];
-  const V = { home: viewHome, buste: viewBuste, turni: viewTurni, lavori: viewLavori, calcola: viewCalcola, guida: viewGuida, impostazioni: viewImpostazioni, benvenuto: viewBenvenuto, statistiche: viewStatistiche, promemoria: viewPromemoria, cv: viewCV };
+  const V = { home: viewHome, buste: viewBuste, turni: viewTurni, lavori: viewLavori, calcola: viewCalcola, guida: viewGuida, impostazioni: viewImpostazioni, benvenuto: viewBenvenuto, statistiche: viewStatistiche, promemoria: viewPromemoria, cv: viewCV, sefosse: viewSeFosse };
   if (base === 'azione' || base === 'condiviso') {
     const az = arg; history.replaceState(null, '', location.pathname + '#home'); lastRoute = 'home';
-    setTimeout(() => { if (base === 'condiviso') gestisciCondivisi(); else if (az === 'busta') actions['busta-upload'](); else if (az === 'timbra') actions[S.timbro ? 'timbra-fine' : 'timbra-inizio'](); }, 150);
+    setTimeout(() => { if (base === 'condiviso') gestisciCondivisi(); else if (az === 'busta') actions['busta-upload'](); else if (az === 'timbra') actions[S.timbro ? 'timbra-fine' : 'timbra-inizio'](); else if (az === 'inizio' && !S.timbro) actions['timbra-inizio'](); else if (az === 'fine' && S.timbro) actions['timbra-fine'](); }, 150);
     html = viewHome();
   } else if (base === 'busta' && arg) html = viewBusta(arg);
   else if (base === 'lavoro' && arg) html = viewLavoro(arg);
@@ -285,6 +286,9 @@ function render() {
   const pf = $('form[data-form="profilo"]');
   if (pf) { const sync = () => { const d = $('[data-reg]'); if (d) d.style.display = pf.regione.value === 'personalizzata' ? '' : 'none'; }; pf.regione.addEventListener('change', sync); sync(); }
   const cf = $('#calcForm');
+  const sf = $('#simForm');
+  if (sf) { const agg = () => { const fd = new FormData(sf); ['ore', 'dom', 'fest', 'extra', 'nott'].forEach((k) => { sim[k] = Number(fd.get(k)); }); sim.livello = fd.get('livello'); const y = scrollY; render(); scrollTo(0, y); };
+    sf.addEventListener('change', agg); $$('input[type=range]', sf).forEach((i) => i.addEventListener('input', () => { const b = i.closest('label').querySelector('b'); if (b) b.textContent = num(Number(i.value), 0) + (i.name === 'ore' || i.name === 'extra' || i.name === 'nott' ? ' h' : ''); })); }
   if (cf) cf.addEventListener('change', () => {
     const fd = new FormData(cf); const prevCcnl = calc.ccnl;
     for (const [k, v] of fd.entries()) calc[k] = ['livello', 'periodo', 'ccnl'].includes(k) ? v : k === 'mensilita' ? Number(v) : (toNum(v) ?? v);
@@ -329,7 +333,7 @@ function navMin(on) { document.documentElement.classList.toggle('navmin', !!on);
 })();
 window.addEventListener('hashchange', () => {
   closeAllSheets(); const r = route();
-  if (r !== lastRoute) { const a = SEZ.indexOf(lastRoute), b = SEZ.indexOf(r); navDir = a >= 0 && b >= 0 && a !== b ? Math.sign(b - a) : 0; lastRoute = r; render(); scrollTo(0, 0); navMin(false); }
+  if (r !== lastRoute) { if (r !== 'turni') modoFerie = false; const a = SEZ.indexOf(lastRoute), b = SEZ.indexOf(r); navDir = a >= 0 && b >= 0 && a !== b ? Math.sign(b - a) : 0; lastRoute = r; render(); scrollTo(0, 0); navMin(false); }
 });
 
 /* ============ azioni ============ */
@@ -375,14 +379,14 @@ const actions = {
   'set-attivo'(el) { S.attivo = el.dataset.id; save(); render(); toast('Lavoro principale aggiornato'); },
   'doc-add'(el) { addDocs(el.dataset.id); }, 'doc-menu'(el) { docMenu(el.dataset.job, el.dataset.id); }, 'view-file'(el) { viewFile(el.dataset.id, el.dataset.t); },
   'turni-job'(el) { turniJob = el.dataset.id; render(); }, 'turni-mese'(el) { turniYM = addYM(turniYM, Number(el.dataset.d)); render(); },
-  giorno(el) { giornoSheet(el.dataset.d); }, modelli() { modelliSheet(); }, 'import-turni'() { importaTurni(); },
+  giorno(el) { if (modoFerie && route() === 'turni') toggleFerie(el.dataset.d); else giornoSheet(el.dataset.d); }, modelli() { modelliSheet(); }, 'import-turni'() { importaTurni(); },
   'dettaglio-stima'(el) { dettaglioStima(el.dataset.ym, el.dataset.job); },
   'calc-modo'(el) { calc.modo = el.dataset.m; render(); },
   tema(el) { S.tema = el.dataset.v; save(); applyTheme(); render(); },
   'nav-apri'() { navMin(false); },
   info(el) { const t = TERMS[el.dataset.k]; if (!t) return; const sh = openSheet(`<h3>${esc(t[0])}</h3><p class="lead" style="color:var(--text)">${esc(t[1])}</p><button class="btn block" data-x="ok">Ho capito</button>`); sh.addEventListener('click', (e) => { if (e.target.closest('[data-x]')) closeSheet(); }); },
-  'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; save(); render(); if (!fxCartellino(S.timbro.inizio)) toast(`Turno iniziato alle ${S.timbro.inizio}`); },
-  'timbra-fine'() { const t = S.timbro; if (!t) return; const d = new Date(); turniJob = t.jobId; giornoSheet(t.data, { tipo: 'turno', inizio: t.inizio, fine: `${pad(d.getHours())}:${pad(d.getMinutes())}`, pausa: 0 }, () => { S.timbro = null; save(); toast('Turno salvato'); }); },
+  'timbra-inizio'() { const j = attivo(); if (!j) return actions['job-new'](); const d = new Date(); S.timbro = { jobId: j.id, data: todayISO(), inizio: `${pad(d.getHours())}:${pad(d.getMinutes())}` }; turniJob = j.id; S.traguardi = S.traguardi || {}; if (!S.traguardi['primo-timbro']) S.traguardi['primo-timbro'] = true; save(); render(); recuperaTimbri('inizio'); if (!fxCartellino(S.timbro.inizio)) toast(`Turno iniziato alle ${S.timbro.inizio}`); },
+  'timbra-fine'() { const t = S.timbro; if (!t) return; recuperaTimbri('fine'); const d = new Date(); turniJob = t.jobId; giornoSheet(t.data, { tipo: 'turno', inizio: t.inizio, fine: `${pad(d.getHours())}:${pad(d.getMinutes())}`, pausa: 0 }, () => { S.timbro = null; save(); toast('Turno salvato'); }); },
   lettera(el) { lettera(S.buste.find((x) => x.id === el.dataset.id)); },
   async 'cdc-invia'(el) { await inviaCdc(S.buste.find((x) => x.id === el.dataset.id)); render(); },
   async 'cdc-tutte'() { let n = 0; for (const b of S.buste.filter((x) => x.netto)) if (await inviaCdc(b, true)) n++; if (n) toast(`${n} buste inviate a Conto di Casa`); else inviaCdc(S.buste.find((x) => x.netto)); render(); },
@@ -404,6 +408,10 @@ const actions = {
   'ob-fine'(el) { S.onboarded = true; save(); const g = el.dataset.go2; obStep = 0; if (g.startsWith('#')) location.hash = g; else { location.hash = '#home'; setTimeout(() => actions[g](), 120); } },
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },
+  comandi() { comandiSheet(); }, 'avvisi-on'() { attivaAvvisi(); }, 'avvisi-off'() { spegniAvvisi(); },
+  'cal-on'() { attivaCalendario(); }, 'cal-off'() { spegniCalendario(); }, 'cal-apri'() { calendarioSheet(); },
+  'pianifica-ferie'() { modoFerie = !modoFerie; render(); if (modoFerie) setTimeout(() => { const c = $('.banner.ferie'); if (c) c.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); },
+  dossier() { dossierSheet(); }, 'sim-reset'() { sim = null; render(); },
 
   async 'pin-del'() { if (!(await ask('Togliere il PIN?', 'I dati su questo telefono non saranno più cifrati.', 'Togli PIN'))) return; localStorage.removeItem(LOCK_KEY); lockKey = null; save({ noSync: true }); render(); toast('PIN rimosso'); },
   'sync-on'() { offriSync(); }, 'sync-login'() { loginGoogle(); }, 'login-google'() { loginGoogle(); }, account() { accountSheet(); }, 'sync-now'() { syncNow(); },
@@ -466,6 +474,7 @@ document.addEventListener('visibilitychange', async () => {
   if (document.hidden) { lockedAt = Date.now(); return; }
   if (lockKey && lockedAt && Date.now() - lockedAt > 60000 && !$('.lock')) { await lockScreen(verificaPin); render(); }
   if (S.sync.on && sbUser) syncNow(true);
+  recuperaTimbri();
 });
 
 /* ============ avvio ============ */
@@ -496,6 +505,7 @@ async function boot() {
     if (S.sync.on && S.sync.pass) syncNow(true); else if (appenaEntrato) setTimeout(() => { if (!sheetStack.length) offriSync(); }, 350);
   });
   avvisaSeServe();
+  setTimeout(() => { recuperaTimbri(); programmaAvvisi(); aggiornaCalendario(); controllaTraguardi(); }, 2800);
   setInterval(() => { if (S.timbro && ['home', 'turni'].includes(route()) && !sheetStack.length) render(); }, 60000);
 }
 matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => { if (S.tema === 'auto') applyTheme(); });
