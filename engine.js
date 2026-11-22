@@ -7,16 +7,17 @@
 
   /* ---------- CCNL ---------- */
   // Minimi mensili lordi tempo pieno (paga base + contingenza + terzo elemento + altre voci fisse)
-  // Fonte: tabelle CCNL Terziario Confcommercio, tranche 1/11/2025 e 1/11/2026.
+  // Fonte: tabelle CCNL Terziario Confcommercio, tranche 1/11/2025, 1/11/2026 e 1/2/2027. Terzo elemento 2,07 € incluso
+  // (province non elencate nel CCNL; Milano, Torino, Bergamo… hanno importi diversi: si corregge col minimo manuale).
   const COMMERCIO_LIVELLI = {
-    Q: { label: 'Quadro', t2611: 3047.05, t2511: 2986.29, incr: 60.76, scatto: 25.46 },
-    '1': { label: 'I livello', t2611: 2560.87, t2511: 2506.13, incr: 54.74, scatto: 24.84 },
-    '2': { label: 'II livello', t2611: 2283.0, t2511: 2235.65, incr: 47.35, scatto: 22.83 },
-    '3': { label: 'III livello', t2611: 2024.38, t2511: 1983.91, incr: 40.47, scatto: 21.95 },
-    '4': { label: 'IV livello', t2611: 1818.75, t2511: 1783.75, incr: 35.0, scatto: 20.66 },
-    '5': { label: 'V livello', t2611: 1691.7, t2511: 1660.08, incr: 31.62, scatto: 20.3 },
-    '6': { label: 'VI livello', t2611: 1570.16, t2511: 1541.77, incr: 28.39, scatto: 19.73 },
-    '7': { label: 'VII livello', t2611: 1422.27, t2511: 1397.96, incr: 24.31, scatto: 19.47 },
+    Q: { label: 'Quadro', t2611: 3047.05, t2511: 2986.29, incr: 60.76, scatto: 25.46, incr27: 69.44 },
+    '1': { label: 'I livello', t2611: 2560.87, t2511: 2506.13, incr: 54.74, scatto: 24.84, incr27: 62.55 },
+    '2': { label: 'II livello', t2611: 2283.0, t2511: 2235.65, incr: 47.35, scatto: 22.83, incr27: 54.11 },
+    '3': { label: 'III livello', t2611: 2024.38, t2511: 1983.91, incr: 40.47, scatto: 21.95, incr27: 46.25 },
+    '4': { label: 'IV livello', t2611: 1818.75, t2511: 1783.75, incr: 35.0, scatto: 20.66, incr27: 40.0 },
+    '5': { label: 'V livello', t2611: 1691.7, t2511: 1660.08, incr: 31.62, scatto: 20.3, incr27: 36.14 },
+    '6': { label: 'VI livello', t2611: 1570.16, t2511: 1541.77, incr: 28.39, scatto: 19.73, incr27: 32.45 },
+    '7': { label: 'VII livello', t2611: 1422.27, t2511: 1397.96, incr: 24.31, scatto: 19.47, incr27: 27.78 },
   };
 
   // Altri CCNL con tabella dei minimi (tempo pieno, mensile lordo)
@@ -47,26 +48,32 @@
   function ymNum(ym) { const [y, m] = ym.split('-').map(Number); return y * 12 + (m - 1); }
   const YM = (y, m) => y * 12 + (m - 1);
 
-  /** Minimo tabellare tempo pieno per livello e mese. stima=true per periodi ricostruiti. */
+  /** Minimo tabellare tempo pieno per livello e mese. stima=true per periodi ricostruiti.
+      Tranche del rinnovo 22/3/2024 al IV livello (riparametrate sugli altri livelli):
+      apr 2023 +30 (acconto), apr 2024 +70, mar 2025 +30, nov 2025 +35, nov 2026 +35, feb 2027 +40. */
   function minimoCommercio(livello, ym) {
     const L = COMMERCIO_LIVELLI[livello] || COMMERCIO_LIVELLI['4'];
     const r = L.incr / 35; // riparametrazione rispetto al IV livello
     const n = ymNum(ym);
+    if (n >= YM(2027, 2)) return { valore: r2(L.t2611 + L.incr27), stima: false };
     if (n >= YM(2026, 11)) return { valore: L.t2611, stima: false };
     if (n >= YM(2025, 11)) return { valore: L.t2511, stima: false };
-    if (n >= YM(2025, 3)) return { valore: r2(L.t2511 - 40 * r), stima: true };
-    if (n >= YM(2024, 4)) return { valore: r2(L.t2511 - 80 * r), stima: true };
-    return { valore: r2(L.t2511 - 150 * r), stima: true };
+    if (n >= YM(2025, 3)) return { valore: r2(L.t2511 - 35 * r), stima: true };
+    if (n >= YM(2024, 4)) return { valore: r2(L.t2511 - 65 * r), stima: true };
+    if (n >= YM(2023, 4)) return { valore: r2(L.t2511 - 135 * r), stima: true };
+    return { valore: r2(L.t2511 - 165 * r), stima: true };
   }
 
-  /** Quota mensile (tempo pieno) degli aumenti del rinnovo 2024 pagata nel mese (per la flat tax 5%). */
+  /** Quota mensile (tempo pieno) degli aumenti del rinnovo 2024 pagata nel mese (per l'imposta del 5%).
+      Conta l'intero aumento del rinnovo in pagamento (circ. AdE 2/E 2026), non l'acconto di aprile 2023. */
   function aumentiRinnovoCommercio(livello, ym) {
     const L = COMMERCIO_LIVELLI[livello] || COMMERCIO_LIVELLI['4'];
     const r = L.incr / 35;
     const n = ymNum(ym);
-    if (n >= YM(2026, 11)) return r2(185 * r);
-    if (n >= YM(2025, 11)) return r2(150 * r);
-    if (n >= YM(2025, 3)) return r2(110 * r);
+    if (n >= YM(2027, 2)) return r2(170 * r + L.incr27);
+    if (n >= YM(2026, 11)) return r2(170 * r);
+    if (n >= YM(2025, 11)) return r2(135 * r);
+    if (n >= YM(2025, 3)) return r2(100 * r);
     if (n >= YM(2024, 4)) return r2(70 * r);
     return 0;
   }
@@ -255,6 +262,9 @@
     const base5 = m.flat5ok && anno === 2026 ? (Number(m.aum5) || 0) * (1 - cr) : 0;
     const sost = base15 * 0.15 + base5 * 0.05;
     const Rann = Math.max(0, Number(m.Rannuo) || (impOrd * 12 + impAgg));
+    // le somme tassate al 15% e al 5% non entrano nel reddito complessivo (detrazioni e cuneo),
+    // ma contano per verificare la capienza del trattamento integrativo (circ. AdE 2/E 2026)
+    const Rcompl = anno === 2026 ? Math.max(0, Rann - (Number(m.RagevAnnuo) || 0)) : Rann;
     const sc = scaglioniIrpef(anno);
     const impOrdIrpef = Math.max(0, impOrd - base15 - base5 * (ord / (lordo || 1)));
     const impAggIrpef = Math.max(0, impAgg - base5 * (agg / (lordo || 1)));
@@ -262,16 +272,16 @@
     const lordaAgg = perScaglioni(impAggIrpef, sc, 12);
     // detrazione dell'anno: in proporzione ai giorni di lavoro dell'anno, con il minimo di 690 € (1.380 € a tempo determinato) sotto i 15.000 €
     const gA = clamp(Number(m.giorniAnno) || 365, 1, 365);
-    let detrAnn = detrazioneLavoro(Rann, m.td) * gA / 365;
-    if (Rann <= 15000) detrAnn = Math.max(detrAnn, detrazioneMinima(m.td));
+    let detrAnn = detrazioneLavoro(Rcompl, m.td) * gA / 365;
+    if (Rcompl <= 15000) detrAnn = Math.max(detrAnn, detrazioneMinima(m.td));
     const detr = ord > 0 ? detrAnn * giorniMese / gA : 0;
-    const cu = cuneo(Rann, Rann);
+    const cu = cuneo(Rcompl, Rcompl);
     const ulteriore = ord > 0 ? cu.ulterioreDetrazione / 12 : 0;
     const irpefLordaTot = lordaOrd + lordaAgg;
     const irpefNetta = Math.max(0, irpefLordaTot - detr - ulteriore);
     const lordaAnnTI = irpefLorda(Rann, anno);
     // trattamento integrativo: solo se l'imposta lorda supera la detrazione meno 75 € (in proporzione al periodo): chi è nella no tax area non lo riceve
-    const tiAnn = trattamentoIntegrativo(Rann, lordaAnnTI, detrAnn, gA);
+    const tiAnn = trattamentoIntegrativo(Rcompl, lordaAnnTI, detrAnn, gA);
     const ti = ord > 0 ? tiAnn * giorniMese / gA : 0;
     const sommaEsente = cu.sommaEsentePct * (impOrd + impAgg);
     const addReg = Number(m.addRegRata) || 0, addCom = Number(m.addComRata) || 0;
@@ -280,19 +290,21 @@
       lordo, contributi, imponibileFiscale: impOrd + impAgg, irpefLorda: irpefLordaTot,
       detrazioni: detr + ulteriore, irpefNetta, sostitutive: sost, trattamentoIntegrativo: ti,
       sommaEsente, addRegionale: addReg, addComunale: addCom, netto,
-      anno: { R: Rann, giorni: gA, irpefLorda: lordaAnnTI, detrazione: detrAnn, soglia: Math.max(0, detrAnn - 75 * gA / 365), ti: tiAnn, incapiente: lordaAnnTI <= detrAnn },
+      anno: { R: Rcompl, giorni: gA, irpefLorda: lordaAnnTI, detrazione: detrAnn, soglia: Math.max(0, detrAnn - 75 * gA / 365), ti: tiAnn, incapiente: lordaAnnTI <= detrAnn },
       totaleTrattenute: contributi + irpefNetta + sost + addReg + addCom,
     };
   }
 
   /** Rate mensili addizionali (saldo anno precedente in 11 rate gen–nov; acconto comunale 30% in 9 rate mar–nov) */
   function rateAddizionali(ym, RannoPrec, RannoCorr, cfg) {
-    const mo = Number(ym.split('-')[1]);
+    const [y, mo] = ym.split('-').map(Number);
     if (mo === 12) return { reg: 0, com: 0 };
-    const detrOk = (R) => irpefLorda(R) - detrazioneLavoro(R) > 0;
+    // dovute solo se c'è IRPEF dopo la detrazione da lavoro (anno precedente: scaglioni dell'anno precedente)
+    const detrOk = (R) => irpefLorda(R, y - 1) - detrazioneLavoro(R) > 0;
     const regTot = detrOk(RannoPrec) ? addizionaleRegionale(RannoPrec, cfg) : 0;
     const comSaldo = detrOk(RannoPrec) ? addizionaleComunale(RannoPrec, cfg) * 0.7 : 0;
-    const comAcc = detrOk(RannoCorr) && mo >= 3 ? addizionaleComunale(RannoCorr, cfg) * 0.3 / 9 : 0;
+    // acconto comunale (30%): sul reddito dell'anno precedente (art. 1 c. 4 D.Lgs. 360/1998), in 9 rate da marzo
+    const comAcc = detrOk(RannoPrec) && mo >= 3 ? addizionaleComunale(RannoPrec, cfg) * 0.3 / 9 : 0;
     return { reg: regTot / 11, com: comSaldo / 11 + comAcc };
   }
 
@@ -317,6 +329,11 @@
     f[iso(pm)] = 'Lunedì dell’Angelo';
     if (patrono && /^\d{2}-\d{2}$/.test(patrono)) f[`${y}-${patrono}`] = f[`${y}-${patrono}`] || 'Santo patrono';
     return f;
+  }
+  /** Festività del mese che cadono di domenica: ai mensilizzati spetta una giornata in più (L. 260/1949 art. 5; CCNL) */
+  function festivitaDomenica(ym, patrono) {
+    const [y] = ym.split('-').map(Number); const f = festivita(y, patrono);
+    return Object.keys(f).filter((k) => k.startsWith(ym) && new Date(k + 'T12:00:00').getDay() === 0).sort().map((k) => ({ data: k, nome: f[k] }));
   }
   const toMin = (t) => { const [h, m] = String(t || '0:0').split(':').map(Number); return h * 60 + (m || 0); };
   /** minuti notturni (22–6) di un turno [s,e) in minuti, e può superare 1440 */
@@ -480,7 +497,7 @@
     TABELLE, NASPI, naspi, nettoAssimilato, tassaTFR,
     r2, CCNL, COMMERCIO_LIVELLI, REGIONI, minimoCommercio, aumentiRinnovoCommercio, contratto,
     irpefLorda, detrazioneLavoro, cuneo, trattamentoIntegrativo, addizionaleRegionale, addizionaleComunale,
-    calcolaAnnuo, calcolaMese, rateAddizionali, festivita, pasqua, durataTurno, classificaMese,
+    calcolaAnnuo, calcolaMese, rateAddizionali, festivita, festivitaDomenica, pasqua, durataTurno, classificaMese,
     importiVariabili, permessiAnnui, iso, lunediDi,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

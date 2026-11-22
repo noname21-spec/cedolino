@@ -205,13 +205,13 @@ function toggleFerie(k) {
 /* ---------- 6. Simulatore «e se…» ---------- */
 let sim = null;
 function simCalcola(j, o) {
-  const P = S.profilo; const cr = Number(P.contribRate) || 9.19; const ym = curYM();
+  const P = S.profilo; const cr = crDi(j); const ym = curYM();
   const jj = Object.assign({}, jCalc(j), { oreSett: o.ore, livello: o.livello });
   const c = E.contratto(jj, ym); const og = c.oreSett / (Number(j.giorniSett) || 5); const full = c.oreSett >= (Number(j.oreSettFull) || 40) - 0.01;
   const cl = { ordinarie: 0, supplementari: full ? 0 : o.extra, straord15: full ? o.extra : 0, straord20: 0, festive: o.fest * og, domenicali: o.dom * og, notturne: o.nott, malattiaRidotti: 0, assenzaOre: 0 };
   const v = E.importiVariabili(cl, c, j); const mens = c.mensilita; const red25 = toNum(P.reddito2025);
   const a = E.calcolaAnnuo(Object.assign({}, P, { lordo: c.base * mens + v.totale * 12, anno: 2026, giorni: 365, td: isTD(j), magg15: v.magg15 * 12, aum5: (c.aumentiRinnovo || 0) * mens, reddito2025: red25 == null ? undefined : red25, contribRate: cr }));
-  const m = E.calcolaMese({ ym, ordinario: c.base + v.totale, aggiuntiva: 0, magg15: v.magg15, aum5: c.aumentiRinnovo || 0, Rannuo: a.imponibile, giorniAnno: 365, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000) });
+  const m = E.calcolaMese({ ym, ordinario: c.base + v.totale, aggiuntiva: 0, magg15: v.magg15, aum5: c.aumentiRinnovo || 0, Rannuo: a.imponibile, RagevAnnuo: a.imponibile - a.R, giorniAnno: 365, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000) });
 
   return { c, v, a, mese: m.netto, anno: a.netto, lordoMese: c.base + v.totale, oraria: a.netto / Math.max(1, c.oreSett * 52 + o.extra * 12) };
 }

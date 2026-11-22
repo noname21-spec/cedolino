@@ -193,6 +193,16 @@ function attivoNelMese(j, ym) {
 function mesiRateo(j, fromYM, toYM) { let n = 0, ym = fromYM; while (ym <= toYM) { if (attivoNelMese(j, ym) >= 15) n++; ym = addYM(ym, 1); } return n; }
 const giorniLavorativi = (ym) => { const [y, m] = ym.split('-').map(Number); const dim = new Date(y, m, 0).getDate(); let n = 0; for (let d = 1; d <= dim; d++) if (new Date(y, m - 1, d).getDay() !== 0) n++; return n; };
 
+/** Aliquota dei contributi a carico del lavoratore: quella del profilo; per l'apprendistato 5,84% se il profilo è rimasto al 9,19% */
+function crDi(j) { const v = Number(S.profilo.contribRate) || 9.19; return j && j.tipo === 'apprendistato' && Math.abs(v - 9.19) < 0.001 ? 5.84 : v; }
+/** Maggiorazioni agevolabili al 15% pagate nella busta del mese (dai turni del mese a cui si riferiscono le variabili) */
+function magg15Busta(j, ym) {
+  if (!attivoNelMese(j, ym)) return 0;
+  const vym = S.profilo.variabiliMeseSucc ? addYM(ym, -1) : ym; const turni = S.turni[j.id] || {};
+  if (!Object.keys(turni).some((k) => k.startsWith(vym))) return 0;
+  const jc = jCalc(j); return E.importiVariabili(E.classificaMese(turni, vym, jc, S.profilo.patrono), E.contratto(jc, vym), j).magg15 || 0;
+}
+
 /** Stima completa di una busta per lavoro e mese */
 function stima(j, ym) {
   if (!j) return null;
@@ -220,6 +230,9 @@ function stima(j, ym) {
     const gl = giorniLavorativi(ym); const lavorati = Object.entries(turni).filter(([k, g]) => k.startsWith(ym) && g.tipo === 'turno').length;
     disponibilita = 0.2 * c.minimoFull * Math.max(0, 1 - lavorati / gl) * quota;
   }
+  // festività cadute di domenica: una giornata di retribuzione in più (L. 260/1949 art. 5, CCNL)
+  const festDom = chiamata ? [] : E.festivitaDomenica(ym, P.patrono).filter((f) => (!j.inizio || j.inizio <= f.data) && (!j.fine || j.fine >= f.data));
+  const festDomImp = festDom.length * c.pagaGiornaliera;
   let aggiuntiva = 0; const aggVoci = [];
   if (!chiamata) {
     const fineQui = j.fine && j.fine.slice(0, 7) === ym;
@@ -230,8 +243,8 @@ function stima(j, ym) {
       if (a > 0) { aggiuntiva += a; aggVoci.push([`Quattordicesima${n < 12 ? ` (${n}/12)` : ''}`, a]); }
     }
   }
-  const ordinario = base + (v ? v.totale : 0) + disponibilita;
-  const cr = Number(P.contribRate) || 9.19;
+  const ordinario = base + (v ? v.totale : 0) + disponibilita + festDomImp;
+  const cr = crDi(j);
   const nAnno = mesiRateo(j, `${y}-01`, `${y}-12`) || 1;
   const varAnn = (v ? v.totale : 0) * nAnno + disponibilita * nAnno;
   const Rannuo = Math.max(0, (chiamata ? varAnn : c.base * nAnno * c.mensilita / 12 + varAnn) * (1 - cr / 100));
@@ -239,10 +252,15 @@ function stima(j, ym) {
   const flat15ok = P.flatTax && (red25 == null || red25 <= 40000);
   const flat5ok = P.flatTax && (red25 == null || red25 <= 33000);
   const aum5 = (c.aumentiRinnovo || 0) * (chiamata ? 0 : quota + (c.base ? aggiuntiva / c.base : 0));
+  // tetto annuo di 1.500 € per il 15%: quanto è già stato usato nei mesi precedenti dello stesso anno
+  let residuo15 = 1500;
+  if (y === 2026 && flat15ok && v && v.magg15 > 0) { for (let mm = `${y}-01`; mm < ym; mm = addYM(mm, 1)) residuo15 -= magg15Busta(j, mm) * (1 - cr / 100); residuo15 = Math.max(0, residuo15); }
+  // somme agevolate dell'anno (fuori dal reddito complessivo per detrazioni e cuneo)
+  const RagevAnnuo = y !== 2026 ? 0 : (flat15ok ? Math.min(1500, (v ? v.magg15 : 0) * nAnno * (1 - cr / 100)) : 0) + (flat5ok && !chiamata ? (c.aumentiRinnovo || 0) * nAnno * c.mensilita / 12 * (1 - cr / 100) : 0);
   let addReg = 0, addCom = 0;
   if (j.inizio && j.inizio < `${y}-01-01`) { const Rprev = y === 2026 && red25 != null ? red25 : Rannuo; const ra = E.rateAddizionali(ym, Rprev, Rannuo, P); addReg = ra.reg; addCom = ra.com; }
   const giorniAnno = giorniLavoroAnno(j, y);
-  const res = E.calcolaMese({ ym, ordinario, aggiuntiva, magg15: v ? v.magg15 : 0, aum5, Rannuo, contribRate: cr, td: isTD(j), flat15ok, flat5ok, addRegRata: addReg, addComRata: addCom, giorniMese: giorniAttivi, giorniAnno });
+  const res = E.calcolaMese({ ym, ordinario, aggiuntiva, magg15: v ? v.magg15 : 0, residuo15, aum5, Rannuo, RagevAnnuo, contribRate: cr, td: isTD(j), flat15ok, flat5ok, addRegRata: addReg, addComRata: addCom, giorniMese: giorniAttivi, giorniAnno });
   const voci = [];
   if (base) voci.push([giorniAttivi < dim ? `Retribuzione (${giorniAttivi}/${dim} gg)` : 'Retribuzione ordinaria', base]);
   if (v) {
@@ -256,8 +274,9 @@ function stima(j, ym) {
     if (v.assenza) voci.push([`Assenze non retribuite (${num(cl.assenzaOre)} h)`, v.assenza]);
   }
   if (disponibilita) voci.push(['Indennità di disponibilità', disponibilita]);
+  if (festDomImp) voci.push([`Festività di domenica (${festDom.map((f) => f.nome).join(', ')})`, festDomImp]);
   aggVoci.forEach((a) => voci.push(a));
-  return { j, ym, c, base, v, cl, vym, aggiuntiva, ordinario, Rannuo, giorniAnno, res, voci, giorniAttivi, chiamata };
+  return { j, ym, c, base, v, cl, vym, aggiuntiva, ordinario, Rannuo, RagevAnnuo, residuo15, aum5, festDom, festDomImp, cr, flat15ok, flat5ok, quota, giorniAnno, res, voci, giorniAttivi, chiamata };
 }
 
 /* ---- ferie e permessi: unità di misura ---- */
@@ -326,7 +345,7 @@ function tfrStimato(j, alla) {
 function controlla(b) {
   const out = []; const j = job(b.jobId);
   if (!j) return [{ s: 'info', t: 'Nessun lavoro collegato', p: 'Collega la busta a un datore di lavoro per poterla controllare.' }];
-  const P = S.profilo; const cr = Number(P.contribRate) || 9.19;
+  const P = S.profilo; const cr = crDi(j);
   const st = stima(j, b.ym);
   const isAgg = b.tipo === 'tredicesima' || b.tipo === 'quattordicesima';
   if (st && b.lordo && b.tipo === 'mensile' && !st.chiamata) {
@@ -341,7 +360,12 @@ function controlla(b) {
   }
   if (b.lordo && b.netto && st) {
     const red25 = toNum(P.reddito2025);
-    const r = E.calcolaMese({ ym: b.ym, ordinario: isAgg ? 0 : b.lordo, aggiuntiva: isAgg ? b.lordo : 0, magg15: st.v ? st.v.magg15 : 0, aum5: st.c.aumentiRinnovo || 0, Rannuo: st.Rannuo, giorniAnno: st.giorniAnno, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000), addRegRata: b.addReg ?? st.res.addRegionale, addComRata: b.addCom ?? st.res.addComunale, giorniMese: st.giorniAttivi });
+    // busta di dicembre/luglio con dentro 13ª o 14ª: la mensilità aggiuntiva si tassa a parte
+    const aggDentro = !isAgg && st.aggiuntiva > 0 && b.lordo > st.aggiuntiva + st.base * 0.5 ? st.aggiuntiva : 0;
+    const ordB = isAgg ? 0 : b.lordo - aggDentro, aggB = isAgg ? b.lordo : aggDentro;
+    const aumR = st.c.aumentiRinnovo || 0, baseC = st.c.base || 0;
+    const aum5B = st.chiamata ? 0 : isAgg ? (baseC ? aumR * b.lordo / baseC : 0) : aumR * (st.quota + (baseC ? aggDentro / baseC : 0));
+    const r = E.calcolaMese({ ym: b.ym, ordinario: ordB, aggiuntiva: aggB, magg15: !isAgg && st.v ? st.v.magg15 : 0, residuo15: st.residuo15, aum5: aum5B, Rannuo: st.Rannuo, RagevAnnuo: st.RagevAnnuo, giorniAnno: st.giorniAnno, contribRate: cr, td: isTD(j), flat15ok: st.flat15ok, flat5ok: st.flat5ok, addRegRata: b.addReg ?? st.res.addRegionale, addComRata: b.addCom ?? st.res.addComunale, giorniMese: st.giorniAttivi });
     const diff = b.netto - r.netto; const tol = Math.max(25, r.netto * 0.04);
     if (Math.abs(diff) <= tol) out.push({ s: 'ok', t: 'Netto in linea con la stima', p: `Stima ${eur(r.netto)}, in busta ${eur(b.netto)} (differenza ${eur(diff)}).` });
     else out.push({ s: diff < 0 ? 'warn' : 'info', t: diff < 0 ? 'Netto più basso della stima' : 'Netto più alto della stima', p: `Stima ${eur(r.netto)}, in busta ${eur(b.netto)} (${diff > 0 ? '+' : ''}${eur(diff)}). Cause frequenti: conguaglio IRPEF, addizionali dell'anno prima, anticipi o quote sindacali, arretrati, bonus fiscali non ancora applicati.${b.ym.endsWith('-12') ? ' A dicembre il conguaglio di fine anno può cambiare molto il netto.' : ''}`, lettera: diff < 0 ? `Il netto (${eur(b.netto)}) mi sembra più basso di quanto mi aspettavo (circa ${eur(r.netto)}): potreste indicarmi quali trattenute hanno inciso?` : null });
@@ -472,7 +496,7 @@ function annoFiscale(y) {
         const bs = S.buste.filter((b) => b.jobId === j.id && b.ym === ym);
         const st = stima(j, ym);
         if (bs.length) {
-          bs.forEach((b) => { const contr = b.contributi ?? (b.lordo || 0) * cr / 100; r.reddito += b.imponibileFisc ?? Math.max(0, (b.lordo || 0) - contr); r.irpef += b.irpef ?? 0; });
+          bs.forEach((b) => { const contr = b.contributi ?? (b.lordo || 0) * crDi(j) / 100; r.reddito += b.imponibileFisc ?? Math.max(0, (b.lordo || 0) - contr); r.irpef += b.irpef ?? 0; });
           bs.forEach((b) => {
             const tiB = b.ti != null ? b.ti : b.testo ? (TI_RE.test(b.testo) && st ? st.res.trattamentoIntegrativo : 0) : st ? st.res.trattamentoIntegrativo : 0;
             r.ti += tiB - (b.tiRecupero || 0);
@@ -1715,7 +1739,7 @@ function viewCalcola() {
     const nMens = mens * mesi / 12;
     const segs = [[a.netto, 'var(--ok)', 'Netto'], [a.contributi, 'var(--blue)', 'INPS'], [a.irpefNetta + a.sostitutiva15 + a.sostitutiva5, 'var(--accent)', 'IRPEF'], [a.addRegionale + a.addComunale, 'var(--bad)', 'Addizionali']];
     const tot = segs.reduce((x, s) => x + Math.max(0, s[0]), 0);
-    const Rm = E.calcolaMese({ ym: '2026-11', ordinario: mensile, aggiuntiva: 0, Rannuo: a.imponibile, contribRate: cr, td: calc.td, flat5ok: P.flatTax && (red25 == null || red25 <= 33000), aum5: aum5 / (nMens || 1) });
+    const Rm = E.calcolaMese({ ym: '2026-11', ordinario: mensile, aggiuntiva: 0, Rannuo: a.imponibile, RagevAnnuo: a.imponibile - a.R, contribRate: cr, td: calc.td, flat5ok: P.flatTax && (red25 == null || red25 <= 33000), aum5: aum5 / (nMens || 1) });
     h += `<div class="card hero fade"><span class="kicker">Netto medio per mensilità ${info('netto')}</span><div class="big">${eur(a.netto / nMens)}</div><div class="muted small">${eur(a.netto)} netti l'anno su ${eur(a.lordo)} lordi · ${num(nMens, 1)} mensilità</div>
     <div class="stack">${segs.filter((s) => s[0] > 0.5).map((s) => `<span style="flex:${s[0] / tot};background:${s[1]}"></span>`).join('')}</div><div class="leg2">${segs.filter((s) => s[0] > 0.5).map((s) => `<span><i style="background:${s[1]}"></i>${s[2]} ${Math.round(s[0] / tot * 100)}%</span>`).join('')}</div>
     <div class="kv" style="margin-top:12px"><span class="k">Busta di un mese normale</span><span class="v">${eur(Rm.netto)}</span></div>${infoTxt ? `<p class="note">${infoTxt}</p>` : ''}</div>`;
@@ -1887,7 +1911,7 @@ function viewFine(jobId) {
   const tfr = tfrStimato(j, fine); const anni = Math.max(1 / 12, (jobMesi(Object.assign({}, j, { fine })) || 1) / 12);
   const tt = E.tassaTFR(tfr, anni);
   const extra = r13 + r14 + ferieE + permE;
-  const cr = Number(S.profilo.contribRate) || 9.19;
+  const cr = crDi(j);
   const nettoExtra = extra > 0 ? E.calcolaMese({ ym, ordinario: 0, aggiuntiva: extra, Rannuo: (stima(j, ym) || { Rannuo: 15000 }).Rannuo, contribRate: cr }).netto : 0;
   h += `<div class="card hero"><span class="kicker">${passato ? 'Liquidazione di fine rapporto' : `Se il contratto finisce il ${dateLabel(fine)}`}</span><div class="big">${eur(nettoExtra + tfr - tt.imposta)}</div><div class="small muted">netti stimati, in più rispetto allo stipendio dell'ultimo mese</div></div>`;
   h += `<div class="card"><h2>Cosa ti spetta</h2>${[
@@ -2366,13 +2390,13 @@ function toggleFerie(k) {
 /* ---------- 6. Simulatore «e se…» ---------- */
 let sim = null;
 function simCalcola(j, o) {
-  const P = S.profilo; const cr = Number(P.contribRate) || 9.19; const ym = curYM();
+  const P = S.profilo; const cr = crDi(j); const ym = curYM();
   const jj = Object.assign({}, jCalc(j), { oreSett: o.ore, livello: o.livello });
   const c = E.contratto(jj, ym); const og = c.oreSett / (Number(j.giorniSett) || 5); const full = c.oreSett >= (Number(j.oreSettFull) || 40) - 0.01;
   const cl = { ordinarie: 0, supplementari: full ? 0 : o.extra, straord15: full ? o.extra : 0, straord20: 0, festive: o.fest * og, domenicali: o.dom * og, notturne: o.nott, malattiaRidotti: 0, assenzaOre: 0 };
   const v = E.importiVariabili(cl, c, j); const mens = c.mensilita; const red25 = toNum(P.reddito2025);
   const a = E.calcolaAnnuo(Object.assign({}, P, { lordo: c.base * mens + v.totale * 12, anno: 2026, giorni: 365, td: isTD(j), magg15: v.magg15 * 12, aum5: (c.aumentiRinnovo || 0) * mens, reddito2025: red25 == null ? undefined : red25, contribRate: cr }));
-  const m = E.calcolaMese({ ym, ordinario: c.base + v.totale, aggiuntiva: 0, magg15: v.magg15, aum5: c.aumentiRinnovo || 0, Rannuo: a.imponibile, giorniAnno: 365, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000) });
+  const m = E.calcolaMese({ ym, ordinario: c.base + v.totale, aggiuntiva: 0, magg15: v.magg15, aum5: c.aumentiRinnovo || 0, Rannuo: a.imponibile, RagevAnnuo: a.imponibile - a.R, giorniAnno: 365, contribRate: cr, td: isTD(j), flat15ok: P.flatTax && (red25 == null || red25 <= 40000), flat5ok: P.flatTax && (red25 == null || red25 <= 33000) });
 
   return { c, v, a, mese: m.netto, anno: a.netto, lordoMese: c.base + v.totale, oraria: a.netto / Math.max(1, c.oreSett * 52 + o.extra * 12) };
 }

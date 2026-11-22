@@ -36,7 +36,7 @@ function viewCalcola() {
     const nMens = mens * mesi / 12;
     const segs = [[a.netto, 'var(--ok)', 'Netto'], [a.contributi, 'var(--blue)', 'INPS'], [a.irpefNetta + a.sostitutiva15 + a.sostitutiva5, 'var(--accent)', 'IRPEF'], [a.addRegionale + a.addComunale, 'var(--bad)', 'Addizionali']];
     const tot = segs.reduce((x, s) => x + Math.max(0, s[0]), 0);
-    const Rm = E.calcolaMese({ ym: '2026-11', ordinario: mensile, aggiuntiva: 0, Rannuo: a.imponibile, contribRate: cr, td: calc.td, flat5ok: P.flatTax && (red25 == null || red25 <= 33000), aum5: aum5 / (nMens || 1) });
+    const Rm = E.calcolaMese({ ym: '2026-11', ordinario: mensile, aggiuntiva: 0, Rannuo: a.imponibile, RagevAnnuo: a.imponibile - a.R, contribRate: cr, td: calc.td, flat5ok: P.flatTax && (red25 == null || red25 <= 33000), aum5: aum5 / (nMens || 1) });
     h += `<div class="card hero fade"><span class="kicker">Netto medio per mensilità ${info('netto')}</span><div class="big">${eur(a.netto / nMens)}</div><div class="muted small">${eur(a.netto)} netti l'anno su ${eur(a.lordo)} lordi · ${num(nMens, 1)} mensilità</div>
     <div class="stack">${segs.filter((s) => s[0] > 0.5).map((s) => `<span style="flex:${s[0] / tot};background:${s[1]}"></span>`).join('')}</div><div class="leg2">${segs.filter((s) => s[0] > 0.5).map((s) => `<span><i style="background:${s[1]}"></i>${s[2]} ${Math.round(s[0] / tot * 100)}%</span>`).join('')}</div>
     <div class="kv" style="margin-top:12px"><span class="k">Busta di un mese normale</span><span class="v">${eur(Rm.netto)}</span></div>${infoTxt ? `<p class="note">${infoTxt}</p>` : ''}</div>`;
@@ -208,7 +208,7 @@ function viewFine(jobId) {
   const tfr = tfrStimato(j, fine); const anni = Math.max(1 / 12, (jobMesi(Object.assign({}, j, { fine })) || 1) / 12);
   const tt = E.tassaTFR(tfr, anni);
   const extra = r13 + r14 + ferieE + permE;
-  const cr = Number(S.profilo.contribRate) || 9.19;
+  const cr = crDi(j);
   const nettoExtra = extra > 0 ? E.calcolaMese({ ym, ordinario: 0, aggiuntiva: extra, Rannuo: (stima(j, ym) || { Rannuo: 15000 }).Rannuo, contribRate: cr }).netto : 0;
   h += `<div class="card hero"><span class="kicker">${passato ? 'Liquidazione di fine rapporto' : `Se il contratto finisce il ${dateLabel(fine)}`}</span><div class="big">${eur(nettoExtra + tfr - tt.imposta)}</div><div class="small muted">netti stimati, in più rispetto allo stipendio dell'ultimo mese</div></div>`;
   h += `<div class="card"><h2>Cosa ti spetta</h2>${[
