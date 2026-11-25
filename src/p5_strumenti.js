@@ -273,8 +273,9 @@ function viewPromemoria() {
   let h = topbar('Promemoria', 'Scadenze e cose da fare', `<button class="iconbtn" data-act="prom-new" aria-label="Nuovo promemoria">${ic.plus}</button>`, '#home');
   const L = promemoria();
   h += L.length ? `<div class="card">${L.map((t) => `<div class="prom">${t.data ? `<div class="pdate"><b>${Number(t.data.slice(8))}</b><span>${MESI_B[Number(t.data.slice(5, 7)) - 1]}</span></div>` : ''}<div class="grow">${todoRow(t)}</div></div>`).join('')}</div>` : vuoto(ic.bell, 'Niente in scadenza', 'Ti avviso qui per fine contratto, NASpI, buste da caricare, permessi da usare, CU e 730.');
-  h += `<div class="card"><h2>Ricevere gli avvisi</h2><p class="small muted" style="margin-top:0">Aggiungi le scadenze al calendario del telefono, oppure fatti avvisare quando apri l'app.</p>
-    <div class="btns"><button class="btn ghost" data-act="ics">${ic.cal} Aggiungi al calendario</button><button class="btn ghost" data-act="notifiche">${ic.bell} ${S.notifiche ? 'Avvisi attivi' : 'Attiva avvisi'}</button></div></div>`;
+  const avOn = S.avvisi && S.avvisi.on;
+  h += `<div class="card"><h2>Ricevere gli avvisi</h2><p class="small muted" style="margin-top:0">${avOn ? 'Avvisi attivi: arrivano anche ad app chiusa. Se vuoi controllare, mandane uno di prova.' : 'Aggiungi le scadenze al calendario del telefono, oppure attiva gli avvisi: arrivano anche ad app chiusa.'}</p>
+    <div class="btns"><button class="btn ghost" data-act="ics">${ic.cal} Aggiungi al calendario</button>${avOn ? `<button class="btn ghost" data-act="avvisi-prova">${ic.bell} Manda un avviso di prova</button>` : `<button class="btn" data-act="avvisi-on">${ic.bell} Attiva avvisi</button>`}</div>${avOn ? '<button class="link" style="margin-top:10px" data-act="avvisi-off">Spegni gli avvisi</button>' : ''}</div>`;
   return h;
 }
 function promForm() {

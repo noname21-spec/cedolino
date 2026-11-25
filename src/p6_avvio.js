@@ -395,10 +395,7 @@ const actions = {
   'prom-new'() { promForm(); }, 'prom-fatto'(el) { const p = S.promemoria.find((x) => x.id === el.dataset.id); if (p) { p.fatto = true; save(); render(); } },
   ics() { creaICS(); },
   async notifiche() {
-    if (!('Notification' in window)) { toast('Questo browser non supporta gli avvisi: usa "Aggiungi al calendario"'); return; }
-    if (S.notifiche) { S.notifiche = false; save(); render(); toast('Avvisi disattivati'); return; }
-    let p = 'denied'; try { p = await Notification.requestPermission(); } catch (e) {}
-    if (p === 'granted') { S.notifiche = true; S.notificato = ''; save(); render(); toast('Ti avviso quando apri l’app'); avvisaSeServe(); } else toast('Permesso non concesso: usa "Aggiungi al calendario"');
+    if (S.avvisi && S.avvisi.on) spegniAvvisi(); else attivaAvvisi();
   },
   'cv-lang'(el) { cvLang = el.dataset.l; render(); }, 'cv-copia'() { copia(`${cvLang === 'en' ? 'WORK EXPERIENCE' : 'ESPERIENZE DI LAVORO'}\n\n` + cvTesto(cvLang).map((x) => x.txt).join('\n\n')); }, 'cv-pdf'() { cvPDF(); },
   'ob-next'() { obSalva(); obStep = Math.min(4, obStep + 1); render(); scrollTo(0, 0); },
@@ -408,7 +405,7 @@ const actions = {
   'ob-fine'(el) { S.onboarded = true; save(); const g = el.dataset.go2; obStep = 0; if (g.startsWith('#')) location.hash = g; else { location.hash = '#home'; setTimeout(() => actions[g](), 120); } },
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },
-  comandi() { comandiSheet(); }, 'avvisi-on'() { attivaAvvisi(); }, 'avvisi-off'() { spegniAvvisi(); },
+  comandi() { comandiSheet(); }, 'avvisi-on'() { attivaAvvisi(); }, 'avvisi-off'() { spegniAvvisi(); }, 'avvisi-prova'() { provaAvvisi(); },
   'cal-on'() { attivaCalendario(); }, 'cal-off'() { spegniCalendario(); }, 'cal-apri'() { calendarioSheet(); },
   'pianifica-ferie'() { modoFerie = !modoFerie; render(); if (modoFerie) setTimeout(() => { const c = $('.banner.ferie'); if (c) c.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); },
   dossier() { dossierSheet(); }, 'sim-reset'() { sim = null; render(); },

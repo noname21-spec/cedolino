@@ -1976,8 +1976,9 @@ function viewPromemoria() {
   let h = topbar('Promemoria', 'Scadenze e cose da fare', `<button class="iconbtn" data-act="prom-new" aria-label="Nuovo promemoria">${ic.plus}</button>`, '#home');
   const L = promemoria();
   h += L.length ? `<div class="card">${L.map((t) => `<div class="prom">${t.data ? `<div class="pdate"><b>${Number(t.data.slice(8))}</b><span>${MESI_B[Number(t.data.slice(5, 7)) - 1]}</span></div>` : ''}<div class="grow">${todoRow(t)}</div></div>`).join('')}</div>` : vuoto(ic.bell, 'Niente in scadenza', 'Ti avviso qui per fine contratto, NASpI, buste da caricare, permessi da usare, CU e 730.');
-  h += `<div class="card"><h2>Ricevere gli avvisi</h2><p class="small muted" style="margin-top:0">Aggiungi le scadenze al calendario del telefono, oppure fatti avvisare quando apri l'app.</p>
-    <div class="btns"><button class="btn ghost" data-act="ics">${ic.cal} Aggiungi al calendario</button><button class="btn ghost" data-act="notifiche">${ic.bell} ${S.notifiche ? 'Avvisi attivi' : 'Attiva avvisi'}</button></div></div>`;
+  const avOn = S.avvisi && S.avvisi.on;
+  h += `<div class="card"><h2>Ricevere gli avvisi</h2><p class="small muted" style="margin-top:0">${avOn ? 'Avvisi attivi: arrivano anche ad app chiusa. Se vuoi controllare, mandane uno di prova.' : 'Aggiungi le scadenze al calendario del telefono, oppure attiva gli avvisi: arrivano anche ad app chiusa.'}</p>
+    <div class="btns"><button class="btn ghost" data-act="ics">${ic.cal} Aggiungi al calendario</button>${avOn ? `<button class="btn ghost" data-act="avvisi-prova">${ic.bell} Manda un avviso di prova</button>` : `<button class="btn" data-act="avvisi-on">${ic.bell} Attiva avvisi</button>`}</div>${avOn ? '<button class="link" style="margin-top:10px" data-act="avvisi-off">Spegni gli avvisi</button>' : ''}</div>`;
   return h;
 }
 function promForm() {
@@ -2260,15 +2261,30 @@ async function recuperaTimbri(nuovo) {
 const avvisiPossibili = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 function b64url(s) { const p = '='.repeat((4 - (s.length % 4)) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); }
 async function attivaAvvisi() {
-  if (isIOS() && !isStandalone()) { toast('Su iPhone gli avvisi arrivano solo dall’app installata sulla schermata Home'); return; }
-  if (!avvisiPossibili()) { toast('Questo browser non può ricevere avvisi'); return; }
+  if (isIOS() && !isStandalone()) { toast('Su iPhone gli avvisi arrivano solo dall’app aperta dalla schermata Home: aggiungila con Condividi › Aggiungi alla schermata Home e riprova da lì'); return; }
+  if (!avvisiPossibili()) { toast('Questo browser non può ricevere avvisi: usa "Aggiungi al calendario"'); return; }
+  if (!navigator.onLine) { toast('Serve la connessione per attivare gli avvisi'); return; }
+  let passo = 'permesso';
   try {
-    const p = await Notification.requestPermission(); if (p !== 'granted') { toast('Permesso negato: puoi darlo da Impostazioni › Notifiche › Cedolino'); return; }
+    const p = await Notification.requestPermission();
+    if (p !== 'granted') { toast(p === 'denied' ? 'Gli avvisi sono bloccati: sbloccali da Impostazioni › Notifiche › Cedolino e riprova' : 'Non hai dato il permesso: riprova e tocca «Consenti»'); return; }
+    passo = 'iscrizione';
     const reg = swReg || (await navigator.serviceWorker.ready);
     let sub = await reg.pushManager.getSubscription(); if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64url(VAPID_PUB) });
+    passo = 'servizio';
     await avApi('registra', { sub: sub.toJSON() });
-    S.avvisi = { on: true }; save(); await programmaAvvisi(); render(); toast('Avvisi attivi: ti scrivo io quando serve');
-  } catch (e) { toast('Non sono riuscito ad attivare gli avvisi: riprova'); }
+    S.avvisi = { on: true }; S.notifiche = false; save(); await programmaAvvisi(); render(); toast('Avvisi attivi. Per controllare, manda un avviso di prova');
+  } catch (e) {
+    const m = String((e && (e.message || e.name)) || '');
+    toast(passo === 'iscrizione' ? `Il telefono non ha accettato l'iscrizione agli avvisi (${m || 'errore'}): chiudi e riapri l'app dalla schermata Home, poi riprova` : passo === 'servizio' ? `Il servizio degli avvisi non ha risposto (${m === 'rete' ? 'connessione' : m}): riprova tra poco` : `Non sono riuscito a chiedere il permesso (${m || 'errore'})`);
+  }
+}
+async function provaAvvisi() {
+  if (!S.avvisi || !S.avvisi.on) { attivaAvvisi(); return; }
+  if (window.Notification && Notification.permission !== 'granted') { toast('Gli avvisi sono bloccati nelle Impostazioni del telefono: sbloccali e riattivali'); return; }
+  try { localStorage.setItem('cedolino.prova', String(Date.now())); } catch (e) {}
+  try { const reg = swReg || (await navigator.serviceWorker.ready); const sub = await reg.pushManager.getSubscription(); if (!sub) { S.avvisi = { on: false }; save(); render(); toast('L’iscrizione agli avvisi è scaduta: toccali per riattivarli'); return; } await avApi('registra', { sub: sub.toJSON() }); await avApi('programma', { avvisi: elencoAvvisi() }); toast('Ti mando un avviso di prova entro 5 minuti: puoi anche chiudere l’app'); }
+  catch (e) { toast('Il servizio degli avvisi non ha risposto: riprova tra poco'); }
 }
 async function spegniAvvisi() {
   S.avvisi = { on: false }; save(); render();
@@ -2279,6 +2295,7 @@ function elencoAvvisi() {
   const out = []; const ora = Date.now(), lim = ora + 45 * 864e5; const P = S.profilo;
   const at = (iso, h, m = 0) => { const d = new Date(iso + 'T00:00:00'); d.setHours(h, m, 0, 0); return d; };
   const add = (d, titolo, testo, url) => { if (d.getTime() > ora + 30000 && d.getTime() < lim) out.push({ quando: d.toISOString(), titolo, testo, url }); };
+  try { const t = Number(localStorage.getItem('cedolino.prova')); if (t && ora < t + 10 * 60e3) out.push({ quando: new Date(Math.max(ora + 45000, t + 45000)).toISOString(), titolo: 'Cedolino', testo: 'Prova riuscita: gli avvisi arrivano anche ad app chiusa.', url: './#home' }); } catch (e) {}
   if (S.timbro) { const d = at(S.timbro.data, ...S.timbro.inizio.split(':').map(Number)); d.setHours(d.getHours() + 10); add(d, 'Turno ancora aperto', `Hai iniziato alle ${S.timbro.inizio}: ti sei dimenticato di chiuderlo?`, './#turni'); }
   for (const j of S.lavori.filter(corrente)) {
     const T = S.turni[j.id] || {};
@@ -2343,6 +2360,7 @@ function cardComodita() {
   return `<div class="sec-title">Comodità</div><div class="card">
     <div class="row"><div class="ic b icbox">${ic.clock}</div><div class="grow"><b>Timbra senza aprire l'app</b><div class="small muted">Da Siri, dal tasto Azione o con un adesivo NFC al lavoro.</div></div><button class="btn sm ghost" data-act="comandi">Prepara</button></div>
     <div class="row" style="margin-top:14px"><div class="ic a icbox">${ic.bell}</div><div class="grow"><b>Avvisi sul telefono</b><div class="small muted">${av ? 'Attivi: turno non chiuso, turno di domani, stipendio, busta da caricare, contratto in scadenza.' : 'Turno non chiuso, turno di domani, giorno di paga, busta da caricare, contratto in scadenza.'}</div></div>${av ? '<button class="btn sm ghost" data-act="avvisi-off">Spegni</button>' : '<button class="btn sm" data-act="avvisi-on">Attiva</button>'}</div>
+    ${av ? '<button class="link" style="margin-top:8px" data-act="avvisi-prova">Manda un avviso di prova</button>' : ''}
     <div class="row" style="margin-top:14px"><div class="ic g icbox">${ic.cal}</div><div class="grow"><b>Turni nel Calendario</b><div class="small muted">${cal ? 'Attivo: si aggiorna da solo.' : 'I turni compaiono nel Calendario dell’iPhone e si aggiornano da soli.'}</div></div>${cal ? '<button class="btn sm ghost" data-act="cal-apri">Indirizzo</button>' : '<button class="btn sm" data-act="cal-on">Attiva</button>'}</div>
     ${cal ? '<button class="link" style="margin-top:10px" data-act="cal-off">Spegni il calendario dei turni</button>' : ''}
     <p class="note" style="margin-bottom:0">Avvisi e calendario passano da un piccolo servizio di Cedolino: riceve solo gli orari dei turni e i testi degli avvisi, non le buste né gli importi del contratto.</p></div>`;
@@ -2925,10 +2943,7 @@ const actions = {
   'prom-new'() { promForm(); }, 'prom-fatto'(el) { const p = S.promemoria.find((x) => x.id === el.dataset.id); if (p) { p.fatto = true; save(); render(); } },
   ics() { creaICS(); },
   async notifiche() {
-    if (!('Notification' in window)) { toast('Questo browser non supporta gli avvisi: usa "Aggiungi al calendario"'); return; }
-    if (S.notifiche) { S.notifiche = false; save(); render(); toast('Avvisi disattivati'); return; }
-    let p = 'denied'; try { p = await Notification.requestPermission(); } catch (e) {}
-    if (p === 'granted') { S.notifiche = true; S.notificato = ''; save(); render(); toast('Ti avviso quando apri l’app'); avvisaSeServe(); } else toast('Permesso non concesso: usa "Aggiungi al calendario"');
+    if (S.avvisi && S.avvisi.on) spegniAvvisi(); else attivaAvvisi();
   },
   'cv-lang'(el) { cvLang = el.dataset.l; render(); }, 'cv-copia'() { copia(`${cvLang === 'en' ? 'WORK EXPERIENCE' : 'ESPERIENZE DI LAVORO'}\n\n` + cvTesto(cvLang).map((x) => x.txt).join('\n\n')); }, 'cv-pdf'() { cvPDF(); },
   'ob-next'() { obSalva(); obStep = Math.min(4, obStep + 1); render(); scrollTo(0, 0); },
@@ -2938,7 +2953,7 @@ const actions = {
   'ob-fine'(el) { S.onboarded = true; save(); const g = el.dataset.go2; obStep = 0; if (g.startsWith('#')) location.hash = g; else { location.hash = '#home'; setTimeout(() => actions[g](), 120); } },
   install() { installa(); }, 'install-no'() { S.installNascosto = true; save(); render(); toast('Puoi installarla quando vuoi dalle Impostazioni'); }, aggiorna() { cercaAggiornamenti(); },
   'pin-set'() { pinForm(); },
-  comandi() { comandiSheet(); }, 'avvisi-on'() { attivaAvvisi(); }, 'avvisi-off'() { spegniAvvisi(); },
+  comandi() { comandiSheet(); }, 'avvisi-on'() { attivaAvvisi(); }, 'avvisi-off'() { spegniAvvisi(); }, 'avvisi-prova'() { provaAvvisi(); },
   'cal-on'() { attivaCalendario(); }, 'cal-off'() { spegniCalendario(); }, 'cal-apri'() { calendarioSheet(); },
   'pianifica-ferie'() { modoFerie = !modoFerie; render(); if (modoFerie) setTimeout(() => { const c = $('.banner.ferie'); if (c) c.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60); },
   dossier() { dossierSheet(); }, 'sim-reset'() { sim = null; render(); },
