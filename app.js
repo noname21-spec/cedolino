@@ -18,6 +18,11 @@ const MESI_B = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', '
 const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const pad = (n) => String(n).padStart(2, '0');
+/** Guscio dell'app: «ios» quando gira dentro l'app per iPhone dell'App Store (WKWebView), «android» nella versione Play.
+    Nell'app iOS niente accesso con Google (non funziona nelle webview ed esigerebbe «Accedi con Apple») né web push. */
+const SHELL = (() => { try { const q = new URLSearchParams(location.search).get('app'); if (q === 'ios' || q === 'android') localStorage.setItem('cedolino.shell', q); return localStorage.getItem('cedolino.shell') || ''; } catch (e) { return ''; } })();
+const inAppIOS = SHELL === 'ios';
+const VERSIONE_APP = '1.0.0';
 const todayISO = () => E.iso(new Date());
 const curYM = () => todayISO().slice(0, 7);
 const ymLabel = (ym) => { const [y, m] = ym.split('-').map(Number); return `${cap(MESI[m - 1])} ${y}`; };
@@ -2047,7 +2052,7 @@ async function cvPDF() {
 
 /* ============ PWA: installazione, aggiornamenti, condivisione ============ */
 let installEvt = null; let swReg = null; let aggiornamentoPronto = false;
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: minimal-ui)').matches || navigator.standalone === true;
+const isStandalone = () => !!SHELL || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: minimal-ui)').matches || navigator.standalone === true;
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const inAnteprima = () => { try { return window.self !== window.top; } catch (e) { return true; } };
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (['home', 'impostazioni'].includes(route())) render(); });
@@ -2261,6 +2266,7 @@ async function recuperaTimbri(nuovo) {
 const avvisiPossibili = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 function b64url(s) { const p = '='.repeat((4 - (s.length % 4)) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); }
 async function attivaAvvisi() {
+  if (inAppIOS) { toast('Nell’app per iPhone gli avvisi non ci sono: usa «Turni nel Calendario» in Impostazioni per i promemoria dei turni'); return; }
   if (isIOS() && !isStandalone()) { toast('Su iPhone gli avvisi arrivano solo dall’app aperta dalla schermata Home: aggiungila con Condividi › Aggiungi alla schermata Home e riprova da lì'); return; }
   if (!avvisiPossibili()) { toast('Questo browser non può ricevere avvisi: usa "Aggiungi al calendario"'); return; }
   if (!navigator.onLine) { toast('Serve la connessione per attivare gli avvisi'); return; }
@@ -2359,8 +2365,8 @@ function cardComodita() {
   const av = S.avvisi && S.avvisi.on, cal = S.cal && S.cal.on;
   return `<div class="sec-title">Comodità</div><div class="card">
     <div class="row"><div class="ic b icbox">${ic.clock}</div><div class="grow"><b>Timbra senza aprire l'app</b><div class="small muted">Da Siri, dal tasto Azione o con un adesivo NFC al lavoro.</div></div><button class="btn sm ghost" data-act="comandi">Prepara</button></div>
-    <div class="row" style="margin-top:14px"><div class="ic a icbox">${ic.bell}</div><div class="grow"><b>Avvisi sul telefono</b><div class="small muted">${av ? 'Attivi: turno non chiuso, turno di domani, stipendio, busta da caricare, contratto in scadenza.' : 'Turno non chiuso, turno di domani, giorno di paga, busta da caricare, contratto in scadenza.'}</div></div>${av ? '<button class="btn sm ghost" data-act="avvisi-off">Spegni</button>' : '<button class="btn sm" data-act="avvisi-on">Attiva</button>'}</div>
-    ${av ? '<button class="link" style="margin-top:8px" data-act="avvisi-prova">Manda un avviso di prova</button>' : ''}
+    ${inAppIOS ? '' : `    <div class="row" style="margin-top:14px"><div class="ic a icbox">${ic.bell}</div><div class="grow"><b>Avvisi sul telefono</b><div class="small muted">${av ? 'Attivi: turno non chiuso, turno di domani, stipendio, busta da caricare, contratto in scadenza.' : 'Turno non chiuso, turno di domani, giorno di paga, busta da caricare, contratto in scadenza.'}</div></div>${av ? '<button class="btn sm ghost" data-act="avvisi-off">Spegni</button>' : '<button class="btn sm" data-act="avvisi-on">Attiva</button>'}</div>
+    ${av ? '<button class="link" style="margin-top:8px" data-act="avvisi-prova">Manda un avviso di prova</button>' : ''}`}
     <div class="row" style="margin-top:14px"><div class="ic g icbox">${ic.cal}</div><div class="grow"><b>Turni nel Calendario</b><div class="small muted">${cal ? 'Attivo: si aggiorna da solo.' : 'I turni compaiono nel Calendario dell’iPhone e si aggiornano da soli.'}</div></div>${cal ? '<button class="btn sm ghost" data-act="cal-apri">Indirizzo</button>' : '<button class="btn sm" data-act="cal-on">Attiva</button>'}</div>
     ${cal ? '<button class="link" style="margin-top:10px" data-act="cal-off">Spegni il calendario dei turni</button>' : ''}
     <p class="note" style="margin-bottom:0">Avvisi e calendario passano da un piccolo servizio di Cedolino: riceve solo gli orari dei turni e i testi degli avvisi, non le buste né gli importi del contratto.</p></div>`;
@@ -2582,13 +2588,14 @@ function viewImpostazioni() {
     <label class="check"><input type="checkbox" data-act="cdc-auto" ${S.cdc.auto ? 'checked' : ''}><span class="switch"></span><span class="grow">Invia automaticamente ogni nuova busta</span></label>
     ${nb ? `<button class="btn ghost block" data-act="cdc-tutte">${ic.link} Invia tutte le buste (${nb})</button>` : ''}
     <p class="note">Funziona se Conto di Casa è sullo stesso sito (es. le tue app su github.io) oppure se accedi con Google in entrambe.</p></div>`;
-  h += `<div class="sec-title">App</div><div class="card"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="40" height="40" style="border-radius:11px"><div class="grow"><b>${isStandalone() ? 'Cedolino è installata' : 'Cedolino come app'}</b><div class="small muted">${isStandalone() ? 'Funziona offline e ricevi i PDF dal menu Condividi.' : 'Installala per aprirla dalla schermata Home, usarla offline e ricevere i PDF da altre app.'}</div></div></div>
+  h += `<div class="sec-title">App</div><div class="card"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="40" height="40" style="border-radius:11px"><div class="grow"><b>${isStandalone() ? 'Cedolino è installata' : 'Cedolino come app'}</b><div class="small muted">${isStandalone() ? (inAppIOS ? 'Funziona offline e tiene tutto sul telefono.' : 'Funziona offline e ricevi i PDF dal menu Condividi.') : 'Installala per aprirla dalla schermata Home, usarla offline e ricevere i PDF da altre app.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${isStandalone() ? '' : `<button class="btn" data-act="install">${ic.download} Installa</button>`}<button class="btn ghost" data-act="aggiorna">Cerca aggiornamenti</button></div></div>`;
   h += `<div class="sec-title">Dati</div><div class="card"><p class="small muted" style="margin-top:0">Tutto resta sul tuo telefono${S.sync.on ? ' (e nella copia cifrata)' : ''}. Fai un backup ogni tanto.</p>
   <div class="btns"><button class="btn ghost" data-act="export">${ic.download} Esporta backup</button><button class="btn ghost" data-act="import">${ic.upload} Importa</button></div>
   <button class="btn ghost block" style="margin-top:10px" data-go="#benvenuto">Rifai la configurazione guidata</button>
   <button class="btn danger block" style="margin-top:10px" data-act="reset">${ic.trash} Cancella tutti i dati</button></div>
-  <p class="note">Cedolino fa stime con le regole 2026 (IRPEF, detrazioni, cuneo fiscale, flat tax, NASpI, CCNL Commercio, Turismo, Pubblici esercizi e Multiservizi). Non sostituisce consulente del lavoro, CAF o sindacato.</p>`;
+  <p class="note">Cedolino fa stime con le regole 2026 (IRPEF, detrazioni, cuneo fiscale, flat tax, NASpI, CCNL Commercio, Turismo, Pubblici esercizi e Multiservizi). Non sostituisce consulente del lavoro, CAF o sindacato.</p>
+  <p class="small muted" style="text-align:center;margin:8px 0 0"><a href="privacy.html">Privacy</a> · <a href="supporto.html">Supporto</a> · <a href="stampa/">Kit stampa</a> · Cedolino ${VERSIONE_APP}</p>`;
   return h;
 }
 
@@ -2652,6 +2659,7 @@ async function syncNow(silenzioso) {
 const nomeUtente = () => { const m = (sbUser && sbUser.user_metadata) || {}; return m.given_name || (m.full_name || m.name || '').split(' ')[0] || ''; };
 const sitoUfficiale = () => /github\.io$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
 function cardAccount() {
+  if (inAppIOS) return `<div class="card"><div class="row"><div class="ic b icbox">${ic.cloud}</div><div class="grow"><b>Dati solo su questo iPhone</b><div class="small muted">Nell'app non serve nessun account: tutto resta qui. Per spostare i dati su un altro dispositivo usa il backup qui sotto.</div></div></div></div>`;
   if (!sbUser) return `<div class="card"><div class="row"><div class="ic b icbox">${ic.user}</div><div class="grow"><b>Accedi con Google</b><div class="small muted">Per ritrovare buste, lavori e turni su tutti i tuoi dispositivi e collegare Conto di Casa.</div></div></div>
     ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
     <button class="btn google block" style="margin-top:12px" data-act="login-google">${GOOGLE_G} Accedi con Google</button>
@@ -2662,7 +2670,8 @@ function cardAccount() {
     ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
     <div class="btns" style="margin-top:12px">${S.sync.on ? `<button class="btn" data-act="sync-now">${ic.cloud} Sincronizza ora</button><button class="btn ghost" data-act="sync-off">Spegni</button>` : `<button class="btn" data-act="sync-on">${ic.cloud} Accendi la sincronizzazione</button>`}</div>
     <button class="link" style="margin-top:12px" data-act="sync-logout">Esci dall'account</button>
-    <p class="note">I dati vengono cifrati sul telefono con una frase segreta che conosci solo tu. I PDF restano sul dispositivo.</p></div>`;
+    <p class="note">I dati vengono cifrati sul telefono con una frase segreta che conosci solo tu. I PDF restano sul dispositivo.</p>
+    <button class="link danger" style="margin-top:6px" data-act="elimina-account">Elimina l'account e i dati online</button></div>`;
 }
 async function loginGoogle() {
   if (sbUser) { return S.sync.on ? accountSheet() : offriSync(); }
@@ -2960,6 +2969,20 @@ const actions = {
 
   async 'pin-del'() { if (!(await ask('Togliere il PIN?', 'I dati su questo telefono non saranno più cifrati.', 'Togli PIN'))) return; localStorage.removeItem(LOCK_KEY); lockKey = null; save({ noSync: true }); render(); toast('PIN rimosso'); },
   'sync-on'() { offriSync(); }, 'sync-login'() { loginGoogle(); }, 'login-google'() { loginGoogle(); }, account() { accountSheet(); }, 'sync-now'() { syncNow(); },
+  async 'elimina-account'() {
+    if (!(await ask('Eliminare l\u2019account?', 'Cancello i dati di Cedolino salvati online e il tuo accesso con Google (se non lo usi per altre mie app). I dati su questo telefono restano: per toglierli usa «Cancella tutti i dati». Non si può annullare.', 'Elimina'))) return;
+    try {
+      if (!sb) await sbInit();
+      const { data } = await sb.auth.getSession(); const t = data && data.session && data.session.access_token;
+      if (!t) throw new Error('accesso');
+      const r = await fetch(`${avURL()}?a=elimina-account`, { method: 'POST', headers: { authorization: 'Bearer ' + t, 'content-type': 'application/json' }, body: '{}' });
+      const j = await r.json().catch(() => ({})); if (!r.ok || !j.ok) throw new Error(j.errore || 'rete');
+      try { await avApi('togli', { cosa: 'tutto' }); } catch (e) {}
+      try { await sb.auth.signOut(); } catch (e) {}
+      sbUser = null; S.sync = { on: false, pass: '' }; S.avvisi = { on: false }; S.cal = { on: false }; save({ noSync: true }); render();
+      toast(j.account ? 'Account e dati online eliminati' : 'Dati di Cedolino eliminati: l\u2019accesso Google resta per le altre app');
+    } catch (e) { toast('Non sono riuscito a eliminare l\u2019account: controlla la connessione e riprova'); }
+  },
   async 'sync-logout'() { if (!(await ask('Uscire dall\u2019account?', 'I dati restano su questo telefono, ma smettono di sincronizzarsi.', 'Esci'))) return; try { await sb.auth.signOut(); } catch (e) {} sbUser = null; S.sync = { on: false, pass: '' }; save({ noSync: true }); closeSheet(); render(); toast('Sei uscito: i dati restano su questo telefono'); },
   'sync-off'() { S.sync = { on: false, pass: '' }; save({ noSync: true }); render(); },
   export() {
@@ -2973,7 +2996,7 @@ const actions = {
     const apply = (txt) => { try { const o = JSON.parse(txt); if (!o || !Array.isArray(o.lavori)) throw 0; S = normalizza(o); S.onboarded = true; save(); applyTheme(); closeSheet(); location.hash = '#home'; render(); toast('Backup importato'); } catch (e) { toast('Backup non valido'); } };
     sh.addEventListener('click', async (e) => { if (e.target.closest('[data-x="close"]')) closeSheet(); if (e.target.closest('[data-x="ok"]')) apply($('textarea', sh).value); if (e.target.closest('[data-x="file"]')) { const f = (await pickFile('application/json,.json'))[0]; if (f) apply(await f.text()); } });
   },
-  async reset() { if (!(await ask('Cancellare tutto?', 'Lavori, buste, turni e documenti verranno eliminati da questo dispositivo. Non si può annullare.', 'Cancella tutto'))) return; S = DEF(); lockKey = null; try { localStorage.removeItem(LOCK_KEY); indexedDB.deleteDatabase('cedolino-files'); dbP = null; } catch (e) {} save({ noSync: true }); applyTheme(); obStep = 0; location.hash = '#benvenuto'; render(); toast('Dati cancellati'); },
+  async reset() { if (!(await ask('Cancellare tutto?', 'Lavori, buste, turni e documenti verranno eliminati da questo dispositivo, insieme ad avvisi, calendario e timbri salvati online per questo telefono. Non si può annullare.', 'Cancella tutto'))) return; try { await avApi('togli', { cosa: 'tutto' }); } catch (e) {} try { localStorage.removeItem('cedolino.dev'); } catch (e) {} S = DEF(); lockKey = null; try { localStorage.removeItem(LOCK_KEY); indexedDB.deleteDatabase('cedolino-files'); dbP = null; } catch (e) {} save({ noSync: true }); applyTheme(); obStep = 0; location.hash = '#benvenuto'; render(); toast('Dati cancellati'); },
 };
 const changeActions = {
   vetro(el) { S.vetro = el.checked; save(); applyTheme(); },

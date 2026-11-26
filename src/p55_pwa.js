@@ -1,7 +1,7 @@
 
 /* ============ PWA: installazione, aggiornamenti, condivisione ============ */
 let installEvt = null; let swReg = null; let aggiornamentoPronto = false;
-const isStandalone = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: minimal-ui)').matches || navigator.standalone === true;
+const isStandalone = () => !!SHELL || matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: minimal-ui)').matches || navigator.standalone === true;
 const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const inAnteprima = () => { try { return window.self !== window.top; } catch (e) { return true; } };
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installEvt = e; if (['home', 'impostazioni'].includes(route())) render(); });

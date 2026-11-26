@@ -18,6 +18,11 @@ const MESI_B = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', '
 const MONTHS_EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const pad = (n) => String(n).padStart(2, '0');
+/** Guscio dell'app: «ios» quando gira dentro l'app per iPhone dell'App Store (WKWebView), «android» nella versione Play.
+    Nell'app iOS niente accesso con Google (non funziona nelle webview ed esigerebbe «Accedi con Apple») né web push. */
+const SHELL = (() => { try { const q = new URLSearchParams(location.search).get('app'); if (q === 'ios' || q === 'android') localStorage.setItem('cedolino.shell', q); return localStorage.getItem('cedolino.shell') || ''; } catch (e) { return ''; } })();
+const inAppIOS = SHELL === 'ios';
+const VERSIONE_APP = '1.0.0';
 const todayISO = () => E.iso(new Date());
 const curYM = () => todayISO().slice(0, 7);
 const ymLabel = (ym) => { const [y, m] = ym.split('-').map(Number); return `${cap(MESI[m - 1])} ${y}`; };

@@ -75,6 +75,7 @@ async function recuperaTimbri(nuovo) {
 const avvisiPossibili = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
 function b64url(s) { const p = '='.repeat((4 - (s.length % 4)) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, (c) => c.charCodeAt(0)); }
 async function attivaAvvisi() {
+  if (inAppIOS) { toast('Nell’app per iPhone gli avvisi non ci sono: usa «Turni nel Calendario» in Impostazioni per i promemoria dei turni'); return; }
   if (isIOS() && !isStandalone()) { toast('Su iPhone gli avvisi arrivano solo dall’app aperta dalla schermata Home: aggiungila con Condividi › Aggiungi alla schermata Home e riprova da lì'); return; }
   if (!avvisiPossibili()) { toast('Questo browser non può ricevere avvisi: usa "Aggiungi al calendario"'); return; }
   if (!navigator.onLine) { toast('Serve la connessione per attivare gli avvisi'); return; }
@@ -173,8 +174,8 @@ function cardComodita() {
   const av = S.avvisi && S.avvisi.on, cal = S.cal && S.cal.on;
   return `<div class="sec-title">Comodità</div><div class="card">
     <div class="row"><div class="ic b icbox">${ic.clock}</div><div class="grow"><b>Timbra senza aprire l'app</b><div class="small muted">Da Siri, dal tasto Azione o con un adesivo NFC al lavoro.</div></div><button class="btn sm ghost" data-act="comandi">Prepara</button></div>
-    <div class="row" style="margin-top:14px"><div class="ic a icbox">${ic.bell}</div><div class="grow"><b>Avvisi sul telefono</b><div class="small muted">${av ? 'Attivi: turno non chiuso, turno di domani, stipendio, busta da caricare, contratto in scadenza.' : 'Turno non chiuso, turno di domani, giorno di paga, busta da caricare, contratto in scadenza.'}</div></div>${av ? '<button class="btn sm ghost" data-act="avvisi-off">Spegni</button>' : '<button class="btn sm" data-act="avvisi-on">Attiva</button>'}</div>
-    ${av ? '<button class="link" style="margin-top:8px" data-act="avvisi-prova">Manda un avviso di prova</button>' : ''}
+    ${inAppIOS ? '' : `    <div class="row" style="margin-top:14px"><div class="ic a icbox">${ic.bell}</div><div class="grow"><b>Avvisi sul telefono</b><div class="small muted">${av ? 'Attivi: turno non chiuso, turno di domani, stipendio, busta da caricare, contratto in scadenza.' : 'Turno non chiuso, turno di domani, giorno di paga, busta da caricare, contratto in scadenza.'}</div></div>${av ? '<button class="btn sm ghost" data-act="avvisi-off">Spegni</button>' : '<button class="btn sm" data-act="avvisi-on">Attiva</button>'}</div>
+    ${av ? '<button class="link" style="margin-top:8px" data-act="avvisi-prova">Manda un avviso di prova</button>' : ''}`}
     <div class="row" style="margin-top:14px"><div class="ic g icbox">${ic.cal}</div><div class="grow"><b>Turni nel Calendario</b><div class="small muted">${cal ? 'Attivo: si aggiorna da solo.' : 'I turni compaiono nel Calendario dell’iPhone e si aggiornano da soli.'}</div></div>${cal ? '<button class="btn sm ghost" data-act="cal-apri">Indirizzo</button>' : '<button class="btn sm" data-act="cal-on">Attiva</button>'}</div>
     ${cal ? '<button class="link" style="margin-top:10px" data-act="cal-off">Spegni il calendario dei turni</button>' : ''}
     <p class="note" style="margin-bottom:0">Avvisi e calendario passano da un piccolo servizio di Cedolino: riceve solo gli orari dei turni e i testi degli avvisi, non le buste né gli importi del contratto.</p></div>`;

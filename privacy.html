@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy · Cedolino</title>
+<meta name="description" content="Come Cedolino tratta i tuoi dati: tutto resta sul telefono, le funzioni online sono facoltative.">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&family=Outfit:wght@700;800&display=swap">
+<link rel="stylesheet" href="pagine.css">
+</head>
+<body>
+<header class="top"><div class="in">
+  <a class="brand" href="./"><img src="icons/icon-192.png?v=2" alt="">Cedolino</a>
+  <nav><a href="./">Apri l'app</a><a href="supporto.html">Supporto</a><a href="privacy.html" aria-current="page">Privacy</a><a href="stampa/">Stampa</a></nav>
+</div></header>
+<div class="hero"><div class="in">
+  <h1 data-l="it">Informativa sulla privacy</h1><h1 data-l="en" hidden>Privacy policy</h1>
+  <p data-l="it">In breve: i tuoi dati restano sul telefono. Le poche funzioni online sono facoltative e le accendi tu.</p>
+  <p data-l="en" hidden>In short: your data stays on your phone. The few online features are optional and only start when you turn them on.</p>
+  <div class="lang"><a class="btn on-hero" href="#it" data-set="it">Italiano</a><a class="btn on-hero" href="#en" data-set="en">English</a></div>
+</div></div>
+
+<main class="wrap">
+<section lang="it" data-l="it">
+  <p class="small">Ultimo aggiornamento: 26 novembre 2026 · Vale per l'app web su noname21-spec.github.io/cedolino e per le versioni su Google Play e App Store.</p>
+
+  <h2>Chi è il titolare</h2>
+  <p>Cedolino è sviluppata da <b>Matteo De Vincenti</b> (Bologna), sviluppatore indipendente, che è titolare del trattamento per i dati delle funzioni online descritte qui sotto. Contatti: <span data-contatto="it"><a href="https://github.com/noname21-spec/cedolino/issues/new">apri una segnalazione su GitHub</a></span>.</p>
+
+  <h2>Cosa resta solo sul tuo telefono</h2>
+  <p>Lavori, contratti, buste paga (PDF e foto), turni, ferie, CU e tutte le stime sono salvati nella memoria del browser o dell'app sul tuo dispositivo. Non li riceviamo e non li vediamo. Se imposti un PIN, sono cifrati sul telefono (AES-GCM). Lo sblocco con Face ID o impronta usa le passkey del sistema: i dati biometrici non escono mai dal dispositivo e l'app non li conosce.</p>
+  <p>La lettura delle buste (testo dei PDF e riconoscimento delle foto) avviene sul telefono: i file non vengono inviati a nessun server.</p>
+
+  <h2>Funzioni online facoltative</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Funzione</th><th>Cosa viene inviato</th><th>Per quanto</th></tr>
+    <tr><td><b>Accesso con Google e sincronizzazione</b> (non presente nell'app per iPhone)</td><td>Nome, email e immagine del profilo Google per creare l'account. I tuoi dati di Cedolino vengono cifrati sul telefono con una frase segreta che conosci solo tu: sul server arriva un blocco illeggibile, nemmeno noi possiamo aprirlo. I PDF non vengono sincronizzati.</td><td>Finché non elimini l'account</td></tr>
+    <tr><td><b>Avvisi sul telefono</b> (notifiche)</td><td>Un codice casuale del dispositivo, l'indirizzo per le notifiche fornito dal browser e i promemoria programmati (orario e testo, per esempio «Turno domani alle 9:00»).</td><td>Gli avvisi vengono cancellati 7 giorni dopo l'invio; il resto finché spegni gli avvisi</td></tr>
+    <tr><td><b>Turni nel Calendario</b></td><td>Il calendario dei tuoi turni (date, orari, luogo di lavoro), raggiungibile solo con un indirizzo segreto che resta a te.</td><td>Finché spegni il calendario</td></tr>
+    <tr><td><b>Timbro da Comandi rapidi o NFC</b></td><td>Orario di inizio e fine turno legato al codice casuale del dispositivo.</td><td>30 giorni</td></tr>
+  </table></div>
+  <p>Non inviamo mai importi, buste paga o dati del contratto per avvisi, calendario e timbri.</p>
+
+  <h2>A chi ci appoggiamo</h2>
+  <ul>
+    <li><b>Supabase</b> (server nell'Unione europea, Irlanda) conserva i dati delle funzioni online, come responsabile del trattamento.</li>
+    <li><b>Google</b> gestisce l'accesso con Google, se lo usi.</li>
+    <li>Le notifiche passano dai servizi push del tuo sistema (Apple, Google o Mozilla) in forma cifrata.</li>
+    <li>Caratteri e alcune librerie (lettura PDF, riconoscimento del testo, creazione dei PDF) vengono scaricati da Google Fonts, cdnjs (Cloudflare) e jsDelivr. Come ogni sito, questi servizi vedono l'indirizzo IP del dispositivo. Dopo il primo uso restano in memoria sul telefono.</li>
+    <li>L'app è ospitata su GitHub Pages, che può registrare l'indirizzo IP nei log tecnici.</li>
+  </ul>
+
+  <h2>Cosa non facciamo</h2>
+  <p>Niente pubblicità, niente statistiche di utilizzo, niente profilazione, niente vendita o cessione dei dati. Nessun tracciamento tra app e siti.</p>
+
+  <h2>Base giuridica</h2>
+  <p>Trattiamo i dati delle funzioni online solo per fornirti il servizio che hai acceso (art. 6.1.b GDPR). Puoi spegnere ogni funzione in qualsiasi momento.</p>
+
+  <h2 id="elimina">Eliminare i dati e l'account</h2>
+  <ul>
+    <li><b>Dati sul telefono:</b> Impostazioni › Dati › <i>Cancella tutti i dati</i>. Cancella anche avvisi, calendario e timbri salvati online per quel telefono.</li>
+    <li><b>Account e dati online:</b> Impostazioni › Account › <i>Elimina l'account e i dati online</i>. I dati di Cedolino vengono cancellati subito; l'accesso Google viene eliminato se non lo usi per altre app dello stesso sviluppatore.</li>
+    <li>Se non puoi più aprire l'app, scrivici dai contatti qui sopra chiedendo la cancellazione: cancelliamo tutto entro 30 giorni.</li>
+  </ul>
+
+  <h2>I tuoi diritti</h2>
+  <p>Puoi chiedere accesso, rettifica, cancellazione, limitazione, portabilità e opporti al trattamento (artt. 15–22 GDPR). Puoi anche reclamare al Garante per la protezione dei dati personali (garanteprivacy.it).</p>
+
+  <h2>Minori</h2>
+  <p>Cedolino è pensata per lavoratori maggiorenni e non raccoglie consapevolmente dati di minori di 14 anni.</p>
+
+  <h2>Modifiche</h2>
+  <p>Se questa informativa cambia, aggiorniamo la data in alto e, per cambi importanti, lo segnaliamo nell'app.</p>
+</section>
+
+<section lang="en" data-l="en" hidden>
+  <p class="small">Last updated: 26 November 2026 · Applies to the web app at noname21-spec.github.io/cedolino and to the Google Play and App Store versions.</p>
+
+  <h2>Who is responsible</h2>
+  <p>Cedolino is developed by <b>Matteo De Vincenti</b> (Bologna, Italy), an independent developer and the data controller for the online features described below. Contact: <span data-contatto="en"><a href="https://github.com/noname21-spec/cedolino/issues/new">open an issue on GitHub</a></span>.</p>
+
+  <h2>What stays on your phone only</h2>
+  <p>Jobs, contracts, payslips (PDFs and photos), shifts, leave, tax forms and all estimates are stored in your browser's or the app's storage on your device. We don't receive or see them. If you set a PIN they are encrypted on the phone (AES-GCM). Face ID or fingerprint unlock uses the system's passkeys: biometric data never leaves the device and the app never sees it.</p>
+  <p>Payslips are read on the phone (PDF text and photo recognition): files are never sent to a server.</p>
+
+  <h2>Optional online features</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Feature</th><th>What is sent</th><th>How long</th></tr>
+    <tr><td><b>Sign in with Google and sync</b> (not available in the iPhone app)</td><td>Your Google name, email and profile picture to create the account. Your Cedolino data is encrypted on the phone with a passphrase only you know: the server stores an unreadable blob that we cannot open. PDFs are not synced.</td><td>Until you delete the account</td></tr>
+    <tr><td><b>Phone notifications</b></td><td>A random device code, the push address provided by the browser and the scheduled reminders (time and text, e.g. “Shift tomorrow at 9:00”).</td><td>Reminders are deleted 7 days after sending; the rest until you turn notifications off</td></tr>
+    <tr><td><b>Shifts in your Calendar</b></td><td>Your shift calendar (dates, times, workplace), reachable only through a secret link that stays with you.</td><td>Until you turn the calendar off</td></tr>
+    <tr><td><b>Clock-in from Shortcuts or NFC</b></td><td>Shift start and end times linked to the random device code.</td><td>30 days</td></tr>
+  </table></div>
+  <p>Amounts, payslips and contract data are never sent for notifications, calendar or clock-ins.</p>
+
+  <h2>Service providers</h2>
+  <ul>
+    <li><b>Supabase</b> (servers in the EU, Ireland) stores the data of the online features as a processor.</li>
+    <li><b>Google</b> handles Sign in with Google, if you use it.</li>
+    <li>Notifications go through your system's push service (Apple, Google or Mozilla), encrypted.</li>
+    <li>Fonts and some libraries (PDF reading, text recognition, PDF creation) are loaded from Google Fonts, cdnjs (Cloudflare) and jsDelivr. Like any website, these services see your device's IP address. After first use they are kept on the phone.</li>
+    <li>The app is hosted on GitHub Pages, which may record IP addresses in technical logs.</li>
+  </ul>
+
+  <h2>What we don't do</h2>
+  <p>No ads, no usage analytics, no profiling, no selling or sharing of data. No tracking across apps and websites.</p>
+
+  <h2>Legal basis</h2>
+  <p>We process online-feature data only to provide the service you turned on (Art. 6(1)(b) GDPR). You can turn any feature off at any time.</p>
+
+  <h2 id="delete">Deleting your data and account</h2>
+  <ul>
+    <li><b>Data on the phone:</b> Settings › Data › <i>Delete all data</i> (in the app: Impostazioni › Dati › <i>Cancella tutti i dati</i>). This also removes notifications, calendar and clock-ins stored online for that phone.</li>
+    <li><b>Account and online data:</b> Impostazioni › Account › <i>Elimina l'account e i dati online</i>. Cedolino data is deleted immediately; the Google sign-in is removed unless you use it for other apps by the same developer.</li>
+    <li>If you can no longer open the app, contact us asking for deletion and we will delete everything within 30 days.</li>
+  </ul>
+
+  <h2>Your rights</h2>
+  <p>You can request access, rectification, erasure, restriction and portability, and object to processing (Arts. 15–22 GDPR). You can also complain to the Italian data protection authority (garanteprivacy.it) or your local authority.</p>
+
+  <h2>Children</h2>
+  <p>Cedolino is meant for adult workers and does not knowingly collect data from children under 14.</p>
+
+  <h2>Changes</h2>
+  <p>If this policy changes we update the date above and, for significant changes, let you know in the app.</p>
+</section>
+</main>
+<footer><div class="in"><span>© 2026 Matteo De Vincenti</span><a href="supporto.html">Supporto</a><a href="stampa/">Kit stampa</a></div></footer>
+<script src="pagine.js"></script>
+</body>
+</html>

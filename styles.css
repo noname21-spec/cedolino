@@ -112,6 +112,7 @@ html[data-vetro="0"] .tile{background:var(--card-solid)}
 .btns{display:flex;gap:10px;flex-wrap:wrap}
 .btns .btn{flex:1}
 .link{background:none;border:0;color:var(--blue);font-weight:600;cursor:pointer;padding:4px 0;font-size:14.5px}
+.link.danger{color:var(--bad);display:block}
 
 /* Forms */
 .field{display:block;margin-bottom:12px}

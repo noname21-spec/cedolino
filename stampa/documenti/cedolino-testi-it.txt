@@ -1,0 +1,30 @@
+Cedolino, l'app gratuita che spiega la busta paga a chi lavora su turni
+
+Stima il netto dai turni, controlla ogni voce della busta con le regole fiscali 2026 e tiene in ordine ferie, contratti e documenti. Senza pubblicità e senza account obbligatori.
+
+Bologna, novembre 2026 – Quanto arriverà in busta questo mese? Le domeniche e le ore serali sono state pagate giuste? Quanti giorni di ferie restano? Per chi lavora nel commercio, nel turismo e nella ristorazione la busta paga è spesso un foglio difficile da leggere, e i conti si fanno a mano. Cedolino nasce per questo: un'app gratuita, in italiano, che trasforma i turni in una stima del netto e controlla la busta quando arriva.
+Si inserisce il proprio contratto (CCNL e livello) e si segnano i turni, anche timbrando con un tocco, da Siri o avvicinando il telefono a un adesivo NFC. Cedolino calcola paga oraria, maggiorazioni per domeniche, festivi, notturni e straordinari, contributi INPS, IRPEF con detrazioni e taglio del cuneo fiscale, addizionali e le imposte agevolate del 2026: il 15% sulle maggiorazioni per lavoro notturno, festivo e a turni e il 5% sugli aumenti dei rinnovi contrattuali. Quando arriva la busta basta fotografarla o caricarne il PDF: l'app legge le voci e segnala cosa non torna, spiegandolo in parole semplici.
+Oltre alla busta: ferie e permessi residui con la previsione a fine anno, tredicesima e quattordicesima, TFR, la simulazione della fine del contratto e della NASpI, il riepilogo per il 730 anche con più datori di lavoro, il simulatore «E se…» per vedere come cambia il netto con più ore o un livello diverso, e un dossier PDF del reddito da portare al CAF o a un'agenzia per l'affitto. I turni possono comparire nel Calendario del telefono e gli avvisi ricordano il turno di domani, il giorno di paga e il contratto in scadenza.
+I dati restano sul telefono e si possono proteggere con PIN o Face ID; anche la lettura delle buste avviene sul dispositivo. La sincronizzazione tra telefono e computer è facoltativa ed è cifrata con una frase segreta che conosce solo l'utente. Nessuna pubblicità, nessun tracciamento, nessun abbonamento.
+Cedolino conosce i contratti Commercio – Terziario Confcommercio (con le tranche del rinnovo fino a febbraio 2027), Turismo – Alberghi, Pubblici esercizi e ristorazione, Pulizie e Multiservizi; per gli altri si inserisce il minimo a mano. È sviluppata a Bologna da Matteo De Vincenti.
+
+Cedolino è disponibile gratis da oggi come app web su https://noname21-spec.github.io/cedolino/, installabile su iPhone e Android dalla schermata Home. Le versioni per Google Play e App Store sono in arrivo.
+
+Le stime hanno valore indicativo e non sostituiscono l'ufficio paghe, il consulente del lavoro o il CAF.
+Contatti stampa: segnalazioni su github.com/noname21-spec/cedolino · Kit stampa con immagini e logo: https://noname21-spec.github.io/cedolino/stampa/
+
+---
+Descrizione breve (40 parole):
+Cedolino è un'app gratuita che stima il netto della busta paga dai turni, controlla ogni voce con le regole fiscali 2026 e tiene in ordine ferie, contratti e documenti. I dati restano sul telefono.
+
+Funzioni:
+• Netto del mese stimato dai turni, prima che arrivi la busta
+• Controllo della busta: minimi del contratto, contributi, netto e ore pagate
+• Lettura di PDF e foto delle buste direttamente sul telefono
+• Dal lordo al netto spiegato voce per voce
+• Turni, straordinari, domeniche, festivi e notturni; timbro da Siri, tasto Azione o NFC
+• Ferie e permessi residui con previsione a fine anno
+• 13ª, 14ª, TFR, fine contratto e NASpI
+• Riepilogo per il 730 con più datori di lavoro e archivio delle CU
+• Simulatore «E se…» su ore, livello e domeniche
+• Dossier del reddito in PDF, esportazione per il CV, turni nel Calendario, avvisi

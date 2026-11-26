@@ -1,0 +1,30 @@
+Cedolino, the free app that explains Italian payslips to shift workers
+
+It estimates net pay from your shifts, checks every line of the payslip against 2026 tax rules and keeps leave, contracts and documents in order. No ads, no account required.
+
+Bologna, Italy, November 2026 – How much will I get this month? Were my Sundays and evening hours paid correctly? How many days of leave are left? For people working in retail, hospitality and restaurants in Italy, the payslip (busta paga) is often hard to read and the maths is done by hand. Cedolino was built for exactly this: a free, Italian-language app that turns shifts into a net pay estimate and checks the payslip when it arrives.
+Users enter their contract (national collective agreement and level) and log their shifts, even clocking in with one tap, from Siri or by holding the phone to an NFC tag. Cedolino works out hourly pay, supplements for Sundays, public holidays, night work and overtime, social security contributions, income tax with deductions and the tax-wedge cut, regional and municipal surcharges and the 2026 flat taxes: 15% on night, holiday and shift supplements and 5% on contract renewal increases. When the payslip arrives, a photo or the PDF is enough: the app reads it and flags what doesn't add up, in plain words.
+Beyond the payslip: remaining leave and paid time off with a year-end forecast, 13th and 14th month pay, severance pay (TFR), end-of-contract and unemployment benefit (NASpI) simulations, a tax-return summary even with several employers, a “What if…” simulator showing how net pay changes with more hours or a different level, and an income dossier PDF for tax assistance centres or rental agencies. Shifts can appear in the phone's Calendar, and reminders flag tomorrow's shift, payday and an expiring contract.
+Data stays on the phone and can be protected with a PIN or Face ID; payslips are read on the device too. Sync between phone and computer is optional and encrypted with a passphrase only the user knows. No ads, no tracking, no subscription.
+Cedolino supports the Retail (Commercio – Terziario Confcommercio, including renewal steps up to February 2027), Hotels, Restaurants and bars, and Cleaning and Facility Services contracts; for others, the minimum pay can be entered manually. It is developed in Bologna by Matteo De Vincenti.
+
+Cedolino is available for free today as a web app at https://noname21-spec.github.io/cedolino/, installable on iPhone and Android from the Home Screen. Google Play and App Store versions are coming soon. The interface is in Italian.
+
+Estimates are indicative and do not replace a payroll office, labour consultant or tax assistance centre.
+Press contact: issues at github.com/noname21-spec/cedolino · Press kit with images and logo: https://noname21-spec.github.io/cedolino/stampa/
+
+---
+Descrizione breve / Short description:
+Cedolino is a free app that estimates Italian net pay from shifts, checks every payslip line against 2026 tax rules and keeps leave, contracts and documents in order. Data stays on the phone.
+
+Features:
+• Monthly net pay estimated from shifts, before the payslip arrives
+• Payslip check: contract minimums, contributions, net pay and paid hours
+• Payslip PDFs and photos read directly on the phone
+• Gross to net explained line by line
+• Shifts, overtime, Sundays, holidays and night work; clock in from Siri, the Action button or NFC
+• Remaining leave and paid time off with a year-end forecast
+• 13th and 14th month pay, severance pay, end of contract and unemployment benefit
+• Tax-return summary with several employers and an archive of tax forms
+• “What if…” simulator for hours, level and Sundays
+• Income dossier PDF, CV export, shifts in Calendar, reminders

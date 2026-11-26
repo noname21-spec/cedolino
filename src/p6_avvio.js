@@ -34,13 +34,14 @@ function viewImpostazioni() {
     <label class="check"><input type="checkbox" data-act="cdc-auto" ${S.cdc.auto ? 'checked' : ''}><span class="switch"></span><span class="grow">Invia automaticamente ogni nuova busta</span></label>
     ${nb ? `<button class="btn ghost block" data-act="cdc-tutte">${ic.link} Invia tutte le buste (${nb})</button>` : ''}
     <p class="note">Funziona se Conto di Casa è sullo stesso sito (es. le tue app su github.io) oppure se accedi con Google in entrambe.</p></div>`;
-  h += `<div class="sec-title">App</div><div class="card"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="40" height="40" style="border-radius:11px"><div class="grow"><b>${isStandalone() ? 'Cedolino è installata' : 'Cedolino come app'}</b><div class="small muted">${isStandalone() ? 'Funziona offline e ricevi i PDF dal menu Condividi.' : 'Installala per aprirla dalla schermata Home, usarla offline e ricevere i PDF da altre app.'}</div></div></div>
+  h += `<div class="sec-title">App</div><div class="card"><div class="row"><img src="icons/icon-192.png?v=2" alt="" width="40" height="40" style="border-radius:11px"><div class="grow"><b>${isStandalone() ? 'Cedolino è installata' : 'Cedolino come app'}</b><div class="small muted">${isStandalone() ? (inAppIOS ? 'Funziona offline e tiene tutto sul telefono.' : 'Funziona offline e ricevi i PDF dal menu Condividi.') : 'Installala per aprirla dalla schermata Home, usarla offline e ricevere i PDF da altre app.'}</div></div></div>
     <div class="btns" style="margin-top:12px">${isStandalone() ? '' : `<button class="btn" data-act="install">${ic.download} Installa</button>`}<button class="btn ghost" data-act="aggiorna">Cerca aggiornamenti</button></div></div>`;
   h += `<div class="sec-title">Dati</div><div class="card"><p class="small muted" style="margin-top:0">Tutto resta sul tuo telefono${S.sync.on ? ' (e nella copia cifrata)' : ''}. Fai un backup ogni tanto.</p>
   <div class="btns"><button class="btn ghost" data-act="export">${ic.download} Esporta backup</button><button class="btn ghost" data-act="import">${ic.upload} Importa</button></div>
   <button class="btn ghost block" style="margin-top:10px" data-go="#benvenuto">Rifai la configurazione guidata</button>
   <button class="btn danger block" style="margin-top:10px" data-act="reset">${ic.trash} Cancella tutti i dati</button></div>
-  <p class="note">Cedolino fa stime con le regole 2026 (IRPEF, detrazioni, cuneo fiscale, flat tax, NASpI, CCNL Commercio, Turismo, Pubblici esercizi e Multiservizi). Non sostituisce consulente del lavoro, CAF o sindacato.</p>`;
+  <p class="note">Cedolino fa stime con le regole 2026 (IRPEF, detrazioni, cuneo fiscale, flat tax, NASpI, CCNL Commercio, Turismo, Pubblici esercizi e Multiservizi). Non sostituisce consulente del lavoro, CAF o sindacato.</p>
+  <p class="small muted" style="text-align:center;margin:8px 0 0"><a href="privacy.html">Privacy</a> · <a href="supporto.html">Supporto</a> · <a href="stampa/">Kit stampa</a> · Cedolino ${VERSIONE_APP}</p>`;
   return h;
 }
 
@@ -104,6 +105,7 @@ async function syncNow(silenzioso) {
 const nomeUtente = () => { const m = (sbUser && sbUser.user_metadata) || {}; return m.given_name || (m.full_name || m.name || '').split(' ')[0] || ''; };
 const sitoUfficiale = () => /github\.io$|^localhost$|^127\.0\.0\.1$/.test(location.hostname);
 function cardAccount() {
+  if (inAppIOS) return `<div class="card"><div class="row"><div class="ic b icbox">${ic.cloud}</div><div class="grow"><b>Dati solo su questo iPhone</b><div class="small muted">Nell'app non serve nessun account: tutto resta qui. Per spostare i dati su un altro dispositivo usa il backup qui sotto.</div></div></div></div>`;
   if (!sbUser) return `<div class="card"><div class="row"><div class="ic b icbox">${ic.user}</div><div class="grow"><b>Accedi con Google</b><div class="small muted">Per ritrovare buste, lavori e turni su tutti i tuoi dispositivi e collegare Conto di Casa.</div></div></div>
     ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
     <button class="btn google block" style="margin-top:12px" data-act="login-google">${GOOGLE_G} Accedi con Google</button>
@@ -114,7 +116,8 @@ function cardAccount() {
     ${syncStato ? `<p class="banner" style="margin:12px 0 0">${esc(syncStato)}</p>` : ''}
     <div class="btns" style="margin-top:12px">${S.sync.on ? `<button class="btn" data-act="sync-now">${ic.cloud} Sincronizza ora</button><button class="btn ghost" data-act="sync-off">Spegni</button>` : `<button class="btn" data-act="sync-on">${ic.cloud} Accendi la sincronizzazione</button>`}</div>
     <button class="link" style="margin-top:12px" data-act="sync-logout">Esci dall'account</button>
-    <p class="note">I dati vengono cifrati sul telefono con una frase segreta che conosci solo tu. I PDF restano sul dispositivo.</p></div>`;
+    <p class="note">I dati vengono cifrati sul telefono con una frase segreta che conosci solo tu. I PDF restano sul dispositivo.</p>
+    <button class="link danger" style="margin-top:6px" data-act="elimina-account">Elimina l'account e i dati online</button></div>`;
 }
 async function loginGoogle() {
   if (sbUser) { return S.sync.on ? accountSheet() : offriSync(); }
@@ -412,6 +415,20 @@ const actions = {
 
   async 'pin-del'() { if (!(await ask('Togliere il PIN?', 'I dati su questo telefono non saranno più cifrati.', 'Togli PIN'))) return; localStorage.removeItem(LOCK_KEY); lockKey = null; save({ noSync: true }); render(); toast('PIN rimosso'); },
   'sync-on'() { offriSync(); }, 'sync-login'() { loginGoogle(); }, 'login-google'() { loginGoogle(); }, account() { accountSheet(); }, 'sync-now'() { syncNow(); },
+  async 'elimina-account'() {
+    if (!(await ask('Eliminare l\u2019account?', 'Cancello i dati di Cedolino salvati online e il tuo accesso con Google (se non lo usi per altre mie app). I dati su questo telefono restano: per toglierli usa «Cancella tutti i dati». Non si può annullare.', 'Elimina'))) return;
+    try {
+      if (!sb) await sbInit();
+      const { data } = await sb.auth.getSession(); const t = data && data.session && data.session.access_token;
+      if (!t) throw new Error('accesso');
+      const r = await fetch(`${avURL()}?a=elimina-account`, { method: 'POST', headers: { authorization: 'Bearer ' + t, 'content-type': 'application/json' }, body: '{}' });
+      const j = await r.json().catch(() => ({})); if (!r.ok || !j.ok) throw new Error(j.errore || 'rete');
+      try { await avApi('togli', { cosa: 'tutto' }); } catch (e) {}
+      try { await sb.auth.signOut(); } catch (e) {}
+      sbUser = null; S.sync = { on: false, pass: '' }; S.avvisi = { on: false }; S.cal = { on: false }; save({ noSync: true }); render();
+      toast(j.account ? 'Account e dati online eliminati' : 'Dati di Cedolino eliminati: l\u2019accesso Google resta per le altre app');
+    } catch (e) { toast('Non sono riuscito a eliminare l\u2019account: controlla la connessione e riprova'); }
+  },
   async 'sync-logout'() { if (!(await ask('Uscire dall\u2019account?', 'I dati restano su questo telefono, ma smettono di sincronizzarsi.', 'Esci'))) return; try { await sb.auth.signOut(); } catch (e) {} sbUser = null; S.sync = { on: false, pass: '' }; save({ noSync: true }); closeSheet(); render(); toast('Sei uscito: i dati restano su questo telefono'); },
   'sync-off'() { S.sync = { on: false, pass: '' }; save({ noSync: true }); render(); },
   export() {
@@ -425,7 +442,7 @@ const actions = {
     const apply = (txt) => { try { const o = JSON.parse(txt); if (!o || !Array.isArray(o.lavori)) throw 0; S = normalizza(o); S.onboarded = true; save(); applyTheme(); closeSheet(); location.hash = '#home'; render(); toast('Backup importato'); } catch (e) { toast('Backup non valido'); } };
     sh.addEventListener('click', async (e) => { if (e.target.closest('[data-x="close"]')) closeSheet(); if (e.target.closest('[data-x="ok"]')) apply($('textarea', sh).value); if (e.target.closest('[data-x="file"]')) { const f = (await pickFile('application/json,.json'))[0]; if (f) apply(await f.text()); } });
   },
-  async reset() { if (!(await ask('Cancellare tutto?', 'Lavori, buste, turni e documenti verranno eliminati da questo dispositivo. Non si può annullare.', 'Cancella tutto'))) return; S = DEF(); lockKey = null; try { localStorage.removeItem(LOCK_KEY); indexedDB.deleteDatabase('cedolino-files'); dbP = null; } catch (e) {} save({ noSync: true }); applyTheme(); obStep = 0; location.hash = '#benvenuto'; render(); toast('Dati cancellati'); },
+  async reset() { if (!(await ask('Cancellare tutto?', 'Lavori, buste, turni e documenti verranno eliminati da questo dispositivo, insieme ad avvisi, calendario e timbri salvati online per questo telefono. Non si può annullare.', 'Cancella tutto'))) return; try { await avApi('togli', { cosa: 'tutto' }); } catch (e) {} try { localStorage.removeItem('cedolino.dev'); } catch (e) {} S = DEF(); lockKey = null; try { localStorage.removeItem(LOCK_KEY); indexedDB.deleteDatabase('cedolino-files'); dbP = null; } catch (e) {} save({ noSync: true }); applyTheme(); obStep = 0; location.hash = '#benvenuto'; render(); toast('Dati cancellati'); },
 };
 const changeActions = {
   vetro(el) { S.vetro = el.checked; save(); applyTheme(); },

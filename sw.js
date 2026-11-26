@@ -42,6 +42,8 @@ self.addEventListener('fetch', (e) => {
   }
   if (url.origin !== location.origin) return;
   if (url.hostname.endsWith('supabase.co')) return;
+  // kit stampa (immagini grandi e zip): sempre dalla rete, senza riempire la cache dell'app
+  if (/\/stampa\//.test(url.pathname)) return;
   // file dell'app: rete prima (aggiornamenti subito), cache se sei offline
   e.respondWith(fetch(req).then((res) => { if (res.ok) { const cp = res.clone(); caches.open(VERSION).then((c) => c.put(req, cp)); } return res; })
     .catch(() => caches.match(req, { ignoreSearch: true }).then((r) => r || (req.mode === 'navigate' ? caches.match('./index.html') : undefined))));
